@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 from nicegui import ui
 
 from controller.database_controller import database_controller
+from tabs.about_tab import AboutTab
 from tabs.information_tab import InformationTab
 from tabs.participants_tab import ParticipantsTab
 from tabs.promotion_tab import PromotionTab
@@ -42,6 +43,7 @@ class Main:
                 ui.tab('Animateurs')
                 ui.tab('Destinataires')
                 ui.tab('Envoyants')
+                ui.tab('apropos', label='A PROPOS')
 
     def _build_tab_pages(self):
         with ui.tab_panels(self.tabs, value='promo').classes('w-full grow'):
@@ -53,6 +55,8 @@ class Main:
                 ParticipantsTab()
             with ui.tab_panel('C'):
                 ui.label('Content of C')
+            with ui.tab_panel('apropos'):
+                AboutTab()                
 
     def _add_menu_item(self, icon_name, label, fonction):
         with ui.item(on_click=fonction):

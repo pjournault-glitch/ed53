@@ -11,7 +11,22 @@ class DatabaseController:
     def __init__(self):
         load_dotenv()
         self.db_path = Path(os.getenv("DATABASE", "db"))
+        self._on_promotion_changed = []
+        self._promotion = None
         self.promotion = self.load_promotion(self.get_latest_promotion())
+
+    @property
+    def promotion(self):
+        return self._promotion
+
+    @promotion.setter
+    def promotion(self, value):
+        self._promotion = value
+        for callback in self._on_promotion_changed:
+            callback()
+
+    def subscribe_promotion_changed(self, callback):
+        self._on_promotion_changed.append(callback)
 
     @property
     def promotion_year(self):

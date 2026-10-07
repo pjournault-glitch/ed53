@@ -16,6 +16,7 @@ FIELDS = {f.name for f in fields(Participant)}
 
 class ParticipantsTab:
     def __init__(self):
+        database_controller.subscribe_promotion_changed(self.reload)
         self._lock = asyncio.Lock()
         self.grille = ui.aggrid({
                 'rowSelection': {
@@ -55,6 +56,12 @@ class ParticipantsTab:
         with ui.row():
             ui.button('Ajouter un participant', on_click=self._add_line)
             ui.button('Supprimer la sélection', on_click=self._remove_selection, color='negative')
+
+    def reload(self):
+        self.grille.options['rowData'] = self._grid_lines(
+            database_controller.promotion.participants
+        )
+        self.grille.update()
 
     def _new_ligne(self) -> dict:
         return {**EMPTY_LINE, 'id': uuid.uuid4().hex}

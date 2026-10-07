@@ -15,11 +15,11 @@ class PromotionTab:
             # Ouvrir une autre promotion
             with ui.card().classes('w-72'):
                 ui.label('Ouvrir une autre promotion').classes('text-subtitle1 font-bold')
-                choix = ui.select(database_controller.existing_promotions(), label='Promotion').classes('w-full')
+                self.choix = ui.select(database_controller.existing_promotions(), label='Promotion').classes('w-full')
                 ui.space()
                 ui.button('Ouvrir', icon='folder_open',
-                        on_click=lambda: self._select_promotion(choix.value)
-                        ).bind_enabled_from(choix, 'value', backward=bool)
+                        on_click=lambda: self._select_promotion(self.choix.value)
+                        ).bind_enabled_from(self.choix, 'value', backward=bool)
 
             # Nouvelle promotion
             with ui.card().classes('w-72'):
@@ -27,6 +27,9 @@ class PromotionTab:
                 ui.label('Elle deviendra la promotion en cours.').classes('text-grey')
                 ui.space()
                 ui.button('Créer…', icon='add', on_click=self.dialogue.open)
+
+    def _refresh_choices(self):
+        self.choix.set_options(database_controller.existing_promotions(), value=None)
 
     def _create_new_dialog(self):
         with ui.dialog() as self.dialogue, ui.card():
@@ -44,15 +47,19 @@ class PromotionTab:
 
     @ui.refreshable
     def _display_header(self):
-        with ui.row().classes('items-center gap-3'):
-            if database_controller.get_latest_promotion() == database_controller.promotion.year:
-                ui.label(f"Dernière promotion : {database_controller.promotion}").classes('text-h5')
-                ui.badge('en cours', color='positive')
-            else:
-                ui.label(f"Promotion : {database_controller.promotion}").classes('text-h5')
-                ui.badge('consultation', color='warning')
-                ui.button('Revenir à la dernière promotion', icon='undo',
-                        on_click=lambda: self._select_promotion(database_controller.get_latest_promotion())).props('flat')
+        promotion = database_controller.promotion
+        with ui.column().classes('gap-1'):
+            with ui.row().classes('items-center gap-3'):
+                if database_controller.get_latest_promotion() == promotion.year:
+                    ui.label(f"Dernière promotion : {promotion}").classes('text-h5')
+                    ui.badge('en cours', color='positive')
+                else:
+                    ui.label(f"Promotion : {promotion}").classes('text-h5')
+                    ui.badge('consultation', color='warning')
+                    ui.button('Revenir à la dernière promotion', icon='undo',
+                            on_click=lambda: self._select_promotion(database_controller.get_latest_promotion())).props('flat')
+            fee = f'{promotion.year_fee:.2f}'.replace('.', ',')
+            ui.label(f'Tarif annuel : {fee} €').classes('text-subtitle1 text-grey-8')
 
     def _create_new_promotion(self):
         required_fields = [self.new_promotion_year, self.year_fee]
@@ -60,10 +67,11 @@ class PromotionTab:
             ui.notify('Veuillez corriger les champs en erreur', type='negative')
             return
 
-        promotion = Promotion(int(self.new_promotion_year.value), self.year_fee.value, database_controller.promotion.information)
+        promotion = Promotion(int(self.new_promotion_year.value), self.year_fee.value, database_controller.promotion.information,None)
         database_controller.save_promotion(promotion)
         database_controller.promotion = promotion
 
+        self._refresh_choices() 
         self.dialogue.close()
         self._display_header.refresh()
         ui.notify(f'Nouvelle promotion créée : {self.new_promotion_year.value}', type='positive')
