@@ -41,10 +41,12 @@ class DatabaseController:
                                                     iban=os.getenv('IBAN', ''))
         return promotion 
 
-    def save_promotion(self, promotion:Promotion):
+    def save_promotion(self, promotion:Promotion):        
         name = Path(self.db_path) / f"{promotion.year}.json"
-        with open(name, 'w', encoding='utf-8') as f:
+        tmp = f"{name}.tmp"
+        with open(tmp, 'w', encoding='utf-8') as f:
             json.dump(asdict(promotion), f, ensure_ascii=False, indent=4)
+        os.replace(tmp, name)        
 
     def existing_promotions(self):
         return [int(Path(p.name).stem) for p in self.db_path.iterdir() if p.is_file()]

@@ -3,10 +3,15 @@ from nicegui import ui
 
 from controller.database_controller import database_controller
 from tabs.information_tab import InformationTab
+from tabs.participants_tab import ParticipantsTab
 from tabs.promotion_tab import PromotionTab
 
 class Main:
     def __init__(self):
+        ui.query('.q-page').classes('flex')
+        ui.query('.nicegui-content').classes('w-full')
+        ui.add_css('.majuscules, .majuscules input { text-transform: uppercase; }')
+
         load_dotenv()
         self._build_left_drawer()
         self._build_tabs()
@@ -30,22 +35,22 @@ class Main:
             ui.button(on_click=lambda: self.left_drawer.toggle(), icon='menu').props('flat color=white')
             etat = {'titre': 'Promotion'}
             with ui.tabs() as self.tabs:
-                with ui.tab(name='Promotion', label=''):
+                with ui.tab(name='promo', label=''):
                     ui.label().bind_text_from(database_controller, 'promotion_year', backward=lambda y: f'Promotion ({y} - {y+2})' if y else 'Promotion')
-                ui.tab('Information')
-                ui.tab('Participants')
+                ui.tab(name='info', label='Informations Générales')
+                ui.tab(name='participants', label='Participants')
                 ui.tab('Animateurs')
                 ui.tab('Destinataires')
                 ui.tab('Envoyants')
 
     def _build_tab_pages(self):
-        with ui.tab_panels(self.tabs, value='Promotion').classes('w-full'):
-            with ui.tab_panel('Promotion'):
-                promotion_tab = PromotionTab()
-            with ui.tab_panel('Information'):
-                information_tab = InformationTab()
-            with ui.tab_panel('B'):
-                ui.label('Content of B')
+        with ui.tab_panels(self.tabs, value='promo').classes('w-full grow'):
+            with ui.tab_panel('promo'):
+                PromotionTab()
+            with ui.tab_panel('info'):
+                InformationTab()
+            with ui.tab_panel('participants').classes('flex flex-col min-h-0'):
+                ParticipantsTab()
             with ui.tab_panel('C'):
                 ui.label('Content of C')
 
