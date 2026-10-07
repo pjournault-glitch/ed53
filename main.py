@@ -8,8 +8,6 @@ from tabs.promotion_tab import PromotionTab
 class Main:
     def __init__(self):
         load_dotenv()
-        latest_promotion_file = database_controller.get_latest_promotion_file()
-        self.promotion = database_controller.load_promotion(latest_promotion_file)
         self._build_left_drawer()
         self._build_tabs()
         self._build_tab_pages()
@@ -41,9 +39,9 @@ class Main:
     def _build_tab_pages(self):
         with ui.tab_panels(self.tabs, value='Promotion').classes('w-full'):
             with ui.tab_panel('Promotion'):
-                promotion_tab = PromotionTab(self.promotion)
+                promotion_tab = PromotionTab()
             with ui.tab_panel('Information'):
-                information_tab = InformationTab(self.promotion)
+                information_tab = InformationTab()
             with ui.tab_panel('B'):
                 ui.label('Content of B')
             with ui.tab_panel('C'):

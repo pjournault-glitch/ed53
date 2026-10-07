@@ -1,11 +1,7 @@
-from datetime import date
-import json
-import os
-from pathlib import Path
 import re
 from nicegui import ui
 from controller.database_controller import database_controller
-from model.model import Information, Promotion
+from model.model import Information
 from util.util import required_label, required_rule
 
 def is_valid_iban(value: str) -> bool:
@@ -18,9 +14,8 @@ def is_valid_iban(value: str) -> bool:
 
 
 class InformationTab:
-    def __init__(self, promotion:Promotion):
-        self.promotion = promotion
-        info = promotion.information
+    def __init__(self):
+        info = database_controller.promotion.information
         with ui.row().classes('w-full no-wrap gap-8'):
             with ui.column():
                 self.name = required_label(ui.input('Nom', validation=required_rule, value=info.name).classes('w-full'), 'Nom')
@@ -45,7 +40,7 @@ class InformationTab:
             ui.notify('Veuillez corriger les champs en erreur', type='negative')
             return
 
-        self.promotion.information = Information(name=self.name.value, 
+        database_controller.promotion.information = Information(name=self.name.value, 
                            addressee=self.addressee.value,
                            street=self.street.value,
                            bp = self.bp.value,
@@ -55,7 +50,7 @@ class InformationTab:
                            mail=self.email.value,
                            bic=self.bic.value,
                            iban=self.iban.value)
-        database_controller.save_promotion(self.promotion)
-        ui.notify(f"Informations mises à jour pour la promotion {self.promotion.year}", type='positive')
+        database_controller.save_promotion(database_controller.promotion)
+        ui.notify(f"Informations mises à jour pour la promotion {database_controller.promotion.year}", type='positive')
 
 

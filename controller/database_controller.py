@@ -11,16 +11,17 @@ class DatabaseController:
     def __init__(self):
         load_dotenv()
         self.db_path = Path(os.getenv("DATABASE", "db"))
+        self.promotion = self.load_promotion(self.get_latest_promotion())
 
     def get_latest_promotion_file(self):
         db_file_names = [p.name for p in self.db_path.iterdir() if p.is_file()]
         return max(db_file_names, key=str.casefold, default=None)
 
     def get_latest_promotion(self):
-        return Path(self.get_latest_promotion_file()).stem
+        return int(Path(self.get_latest_promotion_file()).stem)
 
-    def load_promotion(self, file_name) -> Promotion:
-        name = Path(self.db_path) / file_name
+    def load_promotion(self, year) -> Promotion:
+        name = Path(self.db_path) / f"{year}.json"
         with open(name, encoding='utf-8') as f:
             promotion = Promotion.from_dict(json.load(f))
             if not promotion.information:
@@ -39,6 +40,12 @@ class DatabaseController:
     def save_promotion(self, promotion:Promotion):
         name = Path(self.db_path) / f"{promotion.year}.json"
         with open(name, 'w', encoding='utf-8') as f:
-            json.dump(asdict(promotion), f, ensure_ascii=False, indent=4)        
+            json.dump(asdict(promotion), f, ensure_ascii=False, indent=4)
+
+    def existing_promotions(self):
+        return [int(Path(p.name).stem) for p in self.db_path.iterdir() if p.is_file()]
+
+    def promotion_exists(self, year):
+        return year in self.existing_promotions() or (year - 1) in self.existing_promotions()
 
 database_controller = DatabaseController()
