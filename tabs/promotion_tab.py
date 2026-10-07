@@ -46,10 +46,10 @@ class PromotionTab:
     def _display_header(self):
         with ui.row().classes('items-center gap-3'):
             if database_controller.get_latest_promotion() == database_controller.promotion.year:
-                ui.label(f"Dernière promotion : {database_controller.promotion.year}").classes('text-h5')
+                ui.label(f"Dernière promotion : {database_controller.promotion}").classes('text-h5')
                 ui.badge('en cours', color='positive')
             else:
-                ui.label(f"Promotion : {database_controller.promotion.year}").classes('text-h5')
+                ui.label(f"Promotion : {database_controller.promotion}").classes('text-h5')
                 ui.badge('consultation', color='warning')
                 ui.button('Revenir à la dernière promotion', icon='undo',
                         on_click=lambda: self._select_promotion(database_controller.get_latest_promotion())).props('flat')

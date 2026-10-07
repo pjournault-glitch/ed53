@@ -21,6 +21,9 @@ class Promotion:
     year_fee: float
     information: Information | None
 
+    def __str__(self) -> str:
+        return f"{self.year} - {self.year + 2}"    
+
     @classmethod
     def from_dict(cls, data: dict) -> 'Promotion':
         info = data.get('information')

@@ -13,6 +13,10 @@ class DatabaseController:
         self.db_path = Path(os.getenv("DATABASE", "db"))
         self.promotion = self.load_promotion(self.get_latest_promotion())
 
+    @property
+    def promotion_year(self):
+        return self.promotion.year if self.promotion else None
+
     def get_latest_promotion_file(self):
         db_file_names = [p.name for p in self.db_path.iterdir() if p.is_file()]
         return max(db_file_names, key=str.casefold, default=None)

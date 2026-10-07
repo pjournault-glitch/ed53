@@ -28,8 +28,10 @@ class Main:
     def _build_tabs(self):
         with ui.header().classes(replace='row items-center') as header:
             ui.button(on_click=lambda: self.left_drawer.toggle(), icon='menu').props('flat color=white')
+            etat = {'titre': 'Promotion'}
             with ui.tabs() as self.tabs:
-                ui.tab('Promotion')
+                with ui.tab(name='Promotion', label=''):
+                    ui.label().bind_text_from(database_controller, 'promotion_year', backward=lambda y: f'Promotion ({y} - {y+2})' if y else 'Promotion')
                 ui.tab('Information')
                 ui.tab('Participants')
                 ui.tab('Animateurs')
