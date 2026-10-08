@@ -5,18 +5,27 @@ from nicegui import run
 from nicegui import ui
 
 from controller.database_controller import database_controller
-from model.model import Participant
+from model.model import Participant, Sender
 
+# 'sender_id' est stocké dans le participant ; 'sender_label' n'existe que dans la grille (affichage)
 EMPTY_LINE = {
     'title': '', 'name': '', 'firstname': '', 'street': '', 'zip': '',
-    'city': '', 'phone': '', 'mail': '', 'sender': '',
+    'city': '', 'phone': '', 'mail': '', 'sender_id': '', 'sender_label': '',
 }
-
 FIELDS = {f.name for f in fields(Participant)}
+
+# Appelé par AG Grid quand on choisit un libellé : met à jour le libellé affiché ET le sender_id
+SENDER_SETTER = """params => {
+    const label = params.newValue ?? '';
+    params.data.sender_label = label;
+    return true;
+}"""
+
 
 class ParticipantsTab:
     def __init__(self):
         database_controller.subscribe_promotion_changed(self.reload)
+        database_controller.subscribe_senders_changed(self.reload)
         self._lock = asyncio.Lock()
         self.grille = ui.aggrid({
                 'rowSelection': {
@@ -25,16 +34,15 @@ class ParticipantsTab:
                 'headerCheckbox': True,          # case « tout sélectionner » dans l'en-tête
                 'enableClickSelection': False,   # seules les cases sélectionnent
             },
-            'defaultColDef': {'resizable': True, 'sortable': True, 'width': 100},
+            'defaultColDef': {'resizable': True, 'sortable': True, 'width': 85},
             'columnDefs': [
-                {'headerName': 'Titre', 'width': 75, 'field': 'title', 'editable': True, 'cellEditor': 'agSelectCellEditor',
-                    'cellEditorParams': {'values': ['', 'M.', 'Mme', 'Père', 'don']},},
-                {'headerName': 'Prénom', 'width': 150, 'field': 'firstname', 'editable': True},
-                {'headerName': 'Nom', 'width': 150,'field': 'name', 'editable': True, ':valueParser': "params => (params.newValue ?? '').toString().toUpperCase()", 'cellClass': 'majuscules'},
+                {'headerName': 'Titre', 'width': 65, 'field': 'title', 'editable': True},
+                {'headerName': 'Prénom', 'width': 130, 'field': 'firstname', 'editable': True},
+                {'headerName': 'Nom', 'width': 130,'field': 'name', 'editable': True, ':valueParser': "params => (params.newValue ?? '').toString().toUpperCase()", 'cellClass': 'majuscules'},
                 {'headerName': 'Adresse', 'width': 200, 'field': 'street', 'editable': True},
-                {'headerName': 'Code Postal', 'width': 150, 'field': 'zip', 'editable': True},
+                {'headerName': 'Code Postal', 'width': 130, 'field': 'zip', 'editable': True},
                 {'headerName': 'Ville', 'width': 200, 'field': 'city', 'editable': True, ':valueParser': "params => (params.newValue ?? '').toString().toUpperCase()", 'cellClass': 'majuscules'},
-                {'headerName': 'Téléphone', 'width': 150, 'field': 'phone', 'editable': True,  
+                {'headerName': 'Téléphone', 'width': 130, 'field': 'phone', 'editable': True,  
                  ':valueParser': r"""params => {
                                     const s = (params.newValue ?? '').toString().trim();
                                     let d = s.replace(/\D/g, '');
@@ -44,10 +52,14 @@ class ParticipantsTab:
                 'cellClassRules': {
                     'bg-red-200': r'x && !/^0\d( \d{2}){4}$/.test(x)',
                 },},
-                {'headerName': 'Mèl', 'width': 200, 'field': 'mail', 'editable': True, 'cellClassRules': {'bg-red-200': r'x && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x)'}},
-                {'headerName': 'Envoyé par', 'width': 200, 'field': 'sender', 'editable': True},
+                {'headerName': 'Mèl', 'width': 180, 'field': 'mail', 'editable': True, 'cellClassRules': {'bg-red-200': r'x && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x)'}},
+                {'headerName': 'Envoyé par', 'width': 190, 'field': 'sender_label', 'editable': True,
+                 'cellEditor': 'agSelectCellEditor',
+                 'cellEditorParams': {'values': self._sender_choices()},
+                 ':valueSetter': SENDER_SETTER},
             ],
             'rowData': self._grid_lines(database_controller.promotion.participants, 0),
+            "localeText": {"noRowsToShow": "Aucun participant à afficher"},
             ':getRowId': 'params => params.data.id',
             'stopEditingWhenCellsLoseFocus': True,
             'singleClickEdit': True,
@@ -57,7 +69,16 @@ class ParticipantsTab:
             ui.button('Ajouter un participant', on_click=self._add_line)
             ui.button('Supprimer la sélection', on_click=self._remove_selection, color='negative')
 
+    @staticmethod
+    def _sender_choices() -> list[str]:
+        """Valeurs proposées dans la liste déroulante ('' = aucun sender)."""
+        return [s.label for s in database_controller.senders]
+
     def reload(self):
+        """Recharge la grille : participants de la promotion en cours + liste des senders."""
+        for col in self.grille.options['columnDefs']:
+            if col.get('field') == 'sender_label':
+                col['cellEditorParams'] = {'values': self._sender_choices()}
         self.grille.options['rowData'] = self._grid_lines(
             database_controller.promotion.participants
         )

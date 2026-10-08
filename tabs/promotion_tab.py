@@ -67,7 +67,7 @@ class PromotionTab:
             ui.notify('Veuillez corriger les champs en erreur', type='negative')
             return
 
-        promotion = Promotion(int(self.new_promotion_year.value), self.year_fee.value, database_controller.promotion.information,None)
+        promotion = Promotion(int(self.new_promotion_year.value), self.year_fee.value, None)
         database_controller.save_promotion(promotion)
         database_controller.promotion = promotion
 

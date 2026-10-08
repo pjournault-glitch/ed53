@@ -6,12 +6,14 @@ from tabs.about_tab import AboutTab
 from tabs.information_tab import InformationTab
 from tabs.participants_tab import ParticipantsTab
 from tabs.promotion_tab import PromotionTab
+from tabs.senders_tab import SendersTab
 
 class Main:
     def __init__(self):
         ui.query('.q-page').classes('flex')
         ui.query('.nicegui-content').classes('w-full')
         ui.add_css('.majuscules, .majuscules input { text-transform: uppercase; }')
+        ui.add_css('body { font-size: 12px; }', shared=True)   
 
         load_dotenv()
         self._build_left_drawer()
@@ -35,15 +37,15 @@ class Main:
         with ui.header().classes(replace='row items-center') as header:
             ui.button(on_click=lambda: self.left_drawer.toggle(), icon='menu').props('flat color=white')
             etat = {'titre': 'Promotion'}
-            with ui.tabs() as self.tabs:
+            with ui.tabs().props('inline-label') as self.tabs:
                 with ui.tab(name='promo', label=''):
-                    ui.label().bind_text_from(database_controller, 'promotion_year', backward=lambda y: f'Promotion ({y} - {y+2})' if y else 'Promotion')
-                ui.tab(name='info', label='Informations Générales')
-                ui.tab(name='participants', label='Participants')
-                ui.tab('Animateurs')
-                ui.tab('Destinataires')
-                ui.tab('Envoyants')
-                ui.tab('apropos', label='A PROPOS')
+                    ui.label().bind_text_from(database_controller, 'promotion_year', backward=lambda y: f'Promotion ({y} - {y+2})' if y else 'Promotion').style('font-size: 16px !important')
+                ui.tab('participants', label='Participants').style('font-size: 18px !important')
+                ui.tab('Animateurs').style('font-size: 18px !important')
+                ui.tab('Destinataires').style('font-size: 18px !important')
+                ui.tab('sender', label='Envoyants').style('font-size: 18px !important')
+                ui.tab('info', label='Informations Générales', icon='settings').style('font-size: 18px !important')
+                ui.tab('apropos', label='A PROPOS', icon='info').style('font-size: 18px !important')
 
     def _build_tab_pages(self):
         with ui.tab_panels(self.tabs, value='promo').classes('w-full grow'):
@@ -53,8 +55,8 @@ class Main:
                 InformationTab()
             with ui.tab_panel('participants').classes('flex flex-col min-h-0'):
                 ParticipantsTab()
-            with ui.tab_panel('C'):
-                ui.label('Content of C')
+            with ui.tab_panel('sender').classes('flex flex-col min-h-0'):
+                SendersTab()                
             with ui.tab_panel('apropos'):
                 AboutTab()                
 

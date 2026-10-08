@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import uuid
 
 
 @dataclass
@@ -14,6 +15,37 @@ class Information:
     bic: str
     iban: str
 
+    @classmethod
+    def from_dict(cls, data: dict) -> 'Promotion':
+        return cls(
+            name=data['name'],
+            addressee=data['addressee'],
+            street=data['street'],
+            bp=data['bp'],
+            zip=data['zip'],
+            city=data['city'],
+            phone=data['phone'],
+            mail=data['mail'],
+            bic=data['bic'],
+            iban=data['iban']
+        ) 
+
+@dataclass
+class Sender:
+    title: str
+    firstname: str
+    name: str
+    street: str
+    zip: str 
+    city: str
+    phone: str
+    mail: str
+    organisation: str
+
+    @property
+    def label(self) -> str:
+        return f"{self.firstname} {self.name}".strip()     
+
 @dataclass
 class Participant:
     title: str
@@ -24,13 +56,12 @@ class Participant:
     city: str
     phone: str
     mail: str
-    sender: str
+    sender_label: str | None = None
 
 @dataclass
 class Promotion:
     year: int
     year_fee: float
-    information: Information | None
     participants: list[Participant] | None
 
     def __str__(self) -> str:
@@ -38,12 +69,10 @@ class Promotion:
 
     @classmethod
     def from_dict(cls, data: dict) -> 'Promotion':
-        info = data.get('information')
         participants = data.get('participants') or []
         return cls(
             year=data['year'],
             year_fee=data['year_fee'],
-            information=Information(**info) if info else None,
             participants=[Participant(**p) for p in participants],
         )    
 
