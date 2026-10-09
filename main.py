@@ -3,10 +3,12 @@ from nicegui import ui
 
 from controller.database_controller import database_controller
 from tabs.about_tab import AboutTab
+from tabs.addressees_tab import AddresseesTab
 from tabs.information_tab import InformationTab
 from tabs.participants_tab import ParticipantsTab
 from tabs.promotion_tab import PromotionTab
 from tabs.senders_tab import SendersTab
+from tabs.animators_tab import AnimatorsTab
 
 class Main:
     def __init__(self):
@@ -41,9 +43,9 @@ class Main:
                 with ui.tab(name='promo', label=''):
                     ui.label().bind_text_from(database_controller, 'promotion_year', backward=lambda y: f'Promotion ({y} - {y+2})' if y else 'Promotion').style('font-size: 16px !important')
                 ui.tab('participants', label='Participants').style('font-size: 18px !important')
-                ui.tab('Animateurs').style('font-size: 18px !important')
-                ui.tab('Destinataires').style('font-size: 18px !important')
-                ui.tab('sender', label='Envoyants').style('font-size: 18px !important')
+                ui.tab('animators', label='Animateurs').style('font-size: 18px !important')
+                ui.tab('addressees', label='Destinataires').style('font-size: 18px !important')
+                ui.tab('senders', label='Envoyants').style('font-size: 18px !important')
                 ui.tab('info', label='Informations Générales', icon='settings').style('font-size: 18px !important')
                 ui.tab('apropos', label='A PROPOS', icon='info').style('font-size: 18px !important')
 
@@ -55,7 +57,11 @@ class Main:
                 InformationTab()
             with ui.tab_panel('participants').classes('flex flex-col min-h-0'):
                 ParticipantsTab()
-            with ui.tab_panel('sender').classes('flex flex-col min-h-0'):
+            with ui.tab_panel('animators').classes('flex flex-col min-h-0'):
+                AnimatorsTab()                
+            with ui.tab_panel('addressees').classes('flex flex-col min-h-0'):
+                AddresseesTab()                
+            with ui.tab_panel('senders').classes('flex flex-col min-h-0'):
                 SendersTab()                
             with ui.tab_panel('apropos'):
                 AboutTab()                

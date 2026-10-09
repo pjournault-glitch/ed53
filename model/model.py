@@ -1,5 +1,4 @@
-from dataclasses import dataclass, field
-import uuid
+from dataclasses import dataclass
 
 
 @dataclass
@@ -44,7 +43,43 @@ class Sender:
 
     @property
     def label(self) -> str:
-        return f"{self.firstname} {self.name}".strip()     
+        result = ' '.join([self.title, self.firstname, self.name]).strip()
+        if result and self.organisation:
+            return f"{result} ({self.organisation})".strip()
+        elif result:
+            return result.strip()
+        else:
+            return self.organisation.strip()
+
+@dataclass
+class Animator:
+    title: str
+    firstname: str
+    name: str
+    street: str
+    zip: str 
+    city: str
+    phone: str
+    mail: str
+
+    @property
+    def label(self) -> str:
+        return ' '.join([self.title, self.firstname, self.name]).strip()
+
+@dataclass
+class Addressee:
+    title: str
+    firstname: str
+    name: str
+    street: str
+    zip: str 
+    city: str
+    phone: str
+    mail: str
+
+    @property
+    def label(self) -> str:
+        return ' '.join([self.title, self.firstname, self.name]).strip()
 
 @dataclass
 class Participant:

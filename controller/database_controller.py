@@ -2,13 +2,14 @@ from dataclasses import asdict
 import json
 import os
 from pathlib import Path
-from typing import Iterable
 from dotenv import load_dotenv
 
-from model.model import Information, Promotion, Sender
+from model.model import Addressee, Animator, Information, Promotion, Sender
 
 INFORMATION_FILE = "information.json"
 SENDERS_FILE = "senders.json"
+ANIMATORS_FILE = "animators.json"
+ADDRESSEE_FILE = "addressees.json"
 
 class DatabaseController:
     """Gestionnaire des données"""
@@ -21,6 +22,12 @@ class DatabaseController:
         self._on_senders_changed = []
         self._senders = []
         self.senders = self.load_senders()
+        self._on_animators_changed = []
+        self._animators = []
+        self.animators = self.load_animators()
+        self._on_addressees_changed = []
+        self._addressees = []
+        self.addressees = self.load_addressees()
 
     """Renvoi la promotion en cours d'utilisation"""
     @property
@@ -53,6 +60,38 @@ class DatabaseController:
     """Permet de s'abonner aux changements dans les envoyants en cours"""
     def subscribe_senders_changed(self, callback) -> None:
         self._on_senders_changed.append(callback)        
+
+    """Renvoi la liste des animateurs en cours d'utilisation"""
+    @property
+    def animators(self) -> list[Animator]:
+        return self._animators
+
+    """Définit la liste des animateurs en cours et notifie les abonnés à ce changement"""
+    @animators.setter
+    def animators(self, value: list[Animator]) -> None:
+        self._animators = value
+        for callback in self._on_animators_changed:
+            callback()
+
+    """Permet de s'abonner aux changements dans les animateurs en cours"""
+    def subscribe_animators_changed(self, callback) -> None:
+        self._on_animators_changed.append(callback)        
+
+    """Renvoi la liste des destinataires en cours d'utilisation"""
+    @property
+    def addressees(self) -> list[Addressee]:
+        return self._addressees
+
+    """Définit la liste des destinataires en cours et notifie les abonnés à ce changement"""
+    @addressees.setter
+    def addressees(self, value: list[Addressee]) -> None:
+        self._addressees = value
+        for callback in self._on_addressees_changed:
+            callback()
+
+    """Permet de s'abonner aux changements dans les destinataires en cours"""
+    def subscribe_addressees_changed(self, callback) -> None:
+        self._on_addressees_changed.append(callback)        
 
     """Renvoi l'année de la promotion en cours"""
     @property
@@ -125,5 +164,33 @@ class DatabaseController:
     """Renvoie un envoyant par son id"""
     def get_sender(self, sender_id: str | None) -> Sender | None:
         return next((o for o in self.senders if o.id == sender_id), None)
+
+    """Charge les animateurs"""
+    def load_animators(self) -> dict[str, Animator]:
+        path = Path(self.db_path) / ANIMATORS_FILE
+        if not path.exists():
+            return []
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return [Animator(**s) for s in data]
+
+    """Enregistre les animateurs"""
+    def save_animators(self) -> None:
+        path = Path(self.db_path) / ANIMATORS_FILE
+        data = [asdict(s) for s in self.animators]
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")         
+    
+    """Charge les destinataires"""
+    def load_addressees(self) -> dict[str, Addressee]:
+        path = Path(self.db_path) / ADDRESSEE_FILE
+        if not path.exists():
+            return []
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return [Addressee(**s) for s in data]
+
+    """Enregistre les destinataires"""
+    def save_animators(self) -> None:
+        path = Path(self.db_path) / ADDRESSEE_FILE
+        data = [asdict(s) for s in self.addressees]
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")         
 
 database_controller = DatabaseController()
