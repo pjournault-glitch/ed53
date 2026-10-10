@@ -188,7 +188,7 @@ class DatabaseController:
         return [Addressee(**s) for s in data]
 
     """Enregistre les destinataires"""
-    def save_animators(self) -> None:
+    def save_addressees(self) -> None:
         path = Path(self.db_path) / ADDRESSEE_FILE
         data = [asdict(s) for s in self.addressees]
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")         

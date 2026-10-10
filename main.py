@@ -17,7 +17,7 @@ class Main:
         ui.add_css('.majuscules, .majuscules input { text-transform: uppercase; }')
         ui.add_css('body { font-size: 12px; }', shared=True)   
 
-        load_dotenv()
+        load_dotenv(override=True)
         self._build_left_drawer()
         self._build_tabs()
         self._build_tab_pages()

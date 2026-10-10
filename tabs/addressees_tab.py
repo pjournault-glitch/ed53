@@ -31,7 +31,7 @@ class AddresseesTab(AbstractPersonsTab):
                 'cellClassRules': {
                     'bg-red-200': r'x && !/^0\d( \d{2}){4}$/.test(x)',
                 },},
-                {'headerName': 'Mèl', 'width': 200, 'field': 'mail', 'editable': True, 'cellClassRules': {'bg-red-200': r'x && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x)'}},
+                {'headerName': 'Mèl', 'width': 250, 'field': 'mail', 'editable': True, 'cellClassRules': {'bg-red-200': r'x && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x)'}},
             ]
 
     def _get_row_data(self):
@@ -43,15 +43,17 @@ class AddresseesTab(AbstractPersonsTab):
     def _get_no_row_text(self):
         return "Aucun destinataire à afficher"
 
+    def _get_import_tab_name(self):
+        return "Destinataires"    
+
     def _get_fields(self):
         return {f.name for f in fields(Addressee)}
 
     async def _save(self):
-        async with self._lock:
-            lines = await self.grille.get_client_data()
+        lines = await self.grille.get_client_data()
         database_controller.addressees = [
             Addressee(**{k: v for k, v in l.items() if k in self._get_fields()})
             for l in lines
             if any(str(l.get(c) or '').strip() for c in self._get_fields())
         ]
-        await run.io_bound(database_controller.save_addressees)
+        database_controller.save_addressees()

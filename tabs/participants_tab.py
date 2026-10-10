@@ -1,41 +1,38 @@
 import asyncio
 from dataclasses import asdict, fields
+import unicodedata
 import uuid
 from nicegui import run
 from nicegui import ui
 
 from controller.database_controller import database_controller
 from model.model import Participant, Sender
+from tabs.abstract_person_tab import AbstractPersonsTab
 
-# 'sender_id' est stocké dans le participant ; 'sender_label' n'existe que dans la grille (affichage)
-EMPTY_LINE = {
-    'title': '', 'name': '', 'firstname': '', 'street': '', 'zip': '',
-    'city': '', 'phone': '', 'mail': '', 'sender_id': '', 'sender_label': '',
-}
-FIELDS = {f.name for f in fields(Participant)}
-
-# Appelé par AG Grid quand on choisit un libellé : met à jour le libellé affiché ET le sender_id
 SENDER_SETTER = """params => {
     const label = params.newValue ?? '';
     params.data.sender_label = label;
     return true;
 }"""
 
+def _cle_tri(texte: str) -> str:
+    sans_accents = unicodedata.normalize('NFD', texte)
+    return ''.join(c for c in sans_accents if unicodedata.category(c) != 'Mn').casefold()
 
-class ParticipantsTab:
+class ParticipantsTab(AbstractPersonsTab):
     def __init__(self):
         database_controller.subscribe_promotion_changed(self.reload)
         database_controller.subscribe_senders_changed(self.reload)
-        self._lock = asyncio.Lock()
-        self.grille = ui.aggrid({
-                'rowSelection': {
-                'mode': 'multiRow',
-                'checkboxes': True,
-                'headerCheckbox': True,          # case « tout sélectionner » dans l'en-tête
-                'enableClickSelection': False,   # seules les cases sélectionnent
-            },
-            'defaultColDef': {'resizable': True, 'sortable': True, 'width': 85},
-            'columnDefs': [
+        super().__init__()
+
+    def _get_empty_line(self):
+        return {
+            'title': '', 'name': '', 'firstname': '', 'street': '', 'zip': '',
+            'city': '', 'phone': '', 'mail': '', 'sender_id': '', 'sender_label': '',
+        }
+
+    def _get_columns_def(self) -> list:
+        return [
                 {'headerName': 'Titre', 'width': 65, 'field': 'title', 'editable': True},
                 {'headerName': 'Prénom', 'width': 130, 'field': 'firstname', 'editable': True},
                 {'headerName': 'Nom', 'width': 130,'field': 'name', 'editable': True, ':valueParser': "params => (params.newValue ?? '').toString().toUpperCase()", 'cellClass': 'majuscules'},
@@ -53,26 +50,29 @@ class ParticipantsTab:
                     'bg-red-200': r'x && !/^0\d( \d{2}){4}$/.test(x)',
                 },},
                 {'headerName': 'Mèl', 'width': 180, 'field': 'mail', 'editable': True, 'cellClassRules': {'bg-red-200': r'x && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x)'}},
-                {'headerName': 'Envoyé par', 'width': 190, 'field': 'sender_label', 'editable': True,
+                {'headerName': 'Envoyé par', 'width': 500, 'field': 'sender_label', 'editable': True,
                  'cellEditor': 'agSelectCellEditor',
                  'cellEditorParams': {'values': self._sender_choices()},
                  ':valueSetter': SENDER_SETTER},
-            ],
-            'rowData': self._grid_lines(database_controller.promotion.participants, 0),
-            "localeText": {"noRowsToShow": "Aucun participant à afficher"},
-            ':getRowId': 'params => params.data.id',
-            'stopEditingWhenCellsLoseFocus': True,
-            'singleClickEdit': True,
-        }, auto_size_columns=False).classes('w-full grow min-h-[200px]')
-        self.grille.on('cellValueChanged', self._save)
-        with ui.row():
-            ui.button('Ajouter un participant', on_click=self._add_line)
-            ui.button('Supprimer la sélection', on_click=self._remove_selection, color='negative')
+            ]
 
-    @staticmethod
-    def _sender_choices() -> list[str]:
-        """Valeurs proposées dans la liste déroulante ('' = aucun sender)."""
-        return [s.label for s in database_controller.senders]
+    def _get_row_data(self):
+        return self._grid_lines(database_controller.promotion.participants, 0)
+
+    def _get_person_name(self) -> str:
+        return "un participant"
+
+    def _get_no_row_text(self):
+        return "Aucun participant à afficher"
+
+    def _get_import_tab_name(self):
+        return "Participants"       
+
+    def _get_fields(self):
+        return {f.name for f in fields(Participant)}
+
+    def _sender_choices(self) -> list[str]:
+        return sorted((s.label for s in database_controller.senders), key=_cle_tri)
 
     def reload(self):
         """Recharge la grille : participants de la promotion en cours + liste des senders."""
@@ -84,38 +84,11 @@ class ParticipantsTab:
         )
         self.grille.update()
 
-    def _new_ligne(self) -> dict:
-        return {**EMPTY_LINE, 'id': uuid.uuid4().hex}
-
-    def _grid_lines(self, participants, nb_vides: int = 10) -> list[dict]:
-        lines = [{**asdict(p), 'id': uuid.uuid4().hex} for p in (participants or [])]
-        lines += [self._new_ligne() for _ in range(nb_vides)]
-        return lines
-
-    async def _add_line(self):
-        await self.grille.run_grid_method('applyTransaction', {'add': [self._new_ligne()]})
-
-    async def _remove_selection(self):
-        selection = await self.grille.get_selected_rows()
-        if not selection:
-            ui.notify('Aucune ligne sélectionnée', type='warning')
-            return
-        ids = {r['id'] for r in selection}
-        lines = await self.grille.get_client_data()
-        self.grille.options['rowData'] = [l for l in lines if l['id'] not in ids]
-        self.grille.update()
-        await self._save()
-        ui.notify(f'{len(selection)} ligne(s) supprimée(s)')
-
     async def _save(self):
-        async with self._lock:
-            lines = await self.grille.get_client_data()
+        lines = await self.grille.get_client_data()
         database_controller.promotion.participants = [
-            Participant(**{k: v for k, v in l.items() if k in FIELDS})
+            Participant(**{k: v for k, v in l.items() if k in self._get_fields()})
             for l in lines
-            if any(str(l.get(c) or '').strip() for c in FIELDS)
+            if any(str(l.get(c) or '').strip() for c in self._get_fields())
         ]
-        await run.io_bound(
-            database_controller.save_promotion,
-            database_controller.promotion,
-        )
+        database_controller.save_promotion(database_controller.promotion)

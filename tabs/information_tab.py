@@ -67,7 +67,7 @@ class InformationTab:
         # sans afficher d'erreur sur les autres
         if not self._is_complete():
             return
-        await run.io_bound(database_controller.save_information, self._build_information())
+        database_controller.save_information(self._build_information())
 
     def _is_complete(self) -> bool:
         required = [self.name, self.addressee, self.street, self.zip_code,
