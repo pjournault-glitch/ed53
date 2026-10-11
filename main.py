@@ -1,10 +1,12 @@
 import asyncio
+from datetime import datetime
 import os
 
 from dotenv import load_dotenv
 from nicegui import ui
 
 from controller.database_controller import database_controller
+from controller.file_label_controller import FileLabelController
 from controller.meal_controller import MealController
 from tabs.about_tab import AboutTab
 from tabs.addressees_tab import AddresseesTab
@@ -14,6 +16,18 @@ from tabs.promotion_tab import PromotionTab
 from tabs.senders_tab import SendersTab
 from tabs.animators_tab import AnimatorsTab
 from controller.attendance_controller import AttendanceController
+from controller.mail_label_controller import MailLabelController
+from model.model import Addressee
+
+def _required(v) -> bool:
+    return bool(v and v.strip())
+
+def _valid_date(v) -> bool:
+    try:
+        datetime.strptime(v or '', '%d/%m/%Y')
+        return True
+    except ValueError:
+        return False
 
 class Main:
     def __init__(self):
@@ -109,10 +123,57 @@ class Main:
         ui.notify(f"Facture {year}")
 
     def _generate_mails(self):
-        ui.notify("Courriers")
+        promotion = database_controller.promotion
+        persons = sorted(promotion.participants + database_controller.addressees, key=lambda p: p.name)
+        information = database_controller.load_information()
+        pdf = MailLabelController(persons, information.mail_tag).generate()
+        ui.download(pdf, f"courrier_{promotion.year}_{promotion.year + 2}.pdf")
 
-    def _generate_files(self):
-        ui.notify("Dossiers")
+    async def ask_intervention(self) -> dict | None:
+        with ui.dialog() as dialog, ui.card().classes('w-96'):
+            ui.label("Détail de l'intervention").classes('text-lg font-bold')
+
+            speaker = ui.input("Nom de l'intervenant",
+                            validation={'Champ obligatoire': _required}).classes('w-full')
+            title = ui.input("Titre de l'intervention",
+                            validation={'Champ obligatoire': _required}).classes('w-full')
+
+            # date : saisie au clavier (JJ/MM/AAAA) ou choix dans un calendrier
+            with ui.input("Date de l'intervention",
+                        validation={'Date invalide (JJ/MM/AAAA)': _valid_date}).classes('w-full') as date_input:
+                with ui.menu().props('no-parent-event') as menu:
+                    with ui.date(mask='DD/MM/YYYY').bind_value(date_input):
+                        with ui.row().classes('justify-end'):
+                            ui.button('Fermer', on_click=menu.close).props('flat')
+                with date_input.add_slot('append'):
+                    ui.icon('edit_calendar').on('click', menu.open).classes('cursor-pointer')
+
+            def validate():
+                # liste (et non générateur) : tous les champs sont validés, pour afficher toutes les erreurs
+                if all([f.validate() for f in (speaker, title, date_input)]):
+                    dialog.submit({
+                        'speaker': speaker.value.strip(),
+                        'title': title.value.strip(),
+                        'date': datetime.strptime(date_input.value, '%d/%m/%Y').date(),
+                    })
+
+            with ui.row().classes('w-full justify-end'):
+                ui.button('Annuler', on_click=lambda: dialog.submit(None)).props('flat')
+                ui.button('Valider', on_click=validate)
+
+        result = await dialog
+        dialog.delete()   # évite d'accumuler des dialogues dans la page
+        return result        
+
+    async def _generate_files(self):
+        intervention = await self.ask_intervention()
+        if intervention is None:
+            return
+        promotion = database_controller.promotion
+        persons = promotion.participants + database_controller.animators
+        information = database_controller.load_information()
+        pdf = FileLabelController(persons, intervention, information.file_tag, extra_identities=('INTERVENANT', 'ARCHIVE')).generate()
+        ui.download(pdf, f"dossier_{promotion.year}_{promotion.year + 2}.pdf")
 
     def _generate_badges(self):
         ui.notify("Badges")
