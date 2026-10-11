@@ -29,7 +29,7 @@ class ParticipantsTab(AbstractPersonsTab):
             label='Filtrer par envoyant',
             clearable=True,
             on_change=self._apply_sender_filter,
-        ).classes('w-64')        
+        ).classes('w-128')        
         super().__init__()
 
     def _get_empty_line(self):

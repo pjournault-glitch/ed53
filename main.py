@@ -8,6 +8,7 @@ from nicegui import ui
 from controller.badge_controller import BadgeController
 from controller.database_controller import database_controller
 from controller.file_label_controller import FileLabelController
+from controller.invoice_controller import InvoiceController
 from controller.meal_controller import MealController
 from tabs.about_tab import AboutTab
 from tabs.addressees_tab import AddresseesTab
@@ -109,7 +110,7 @@ class Main:
         promotion = database_controller.promotion
         information = database_controller.load_information()
         pdf = AttendanceController(promotion.participants, "Feuille d'émargement",
-            f"{information.name} {promotion.year}-{promotion.year + 2} - Années {promotion.year + year-1}-{promotion.year + year}",
+            f"{information.name} {promotion.year}-{promotion.year + 2} - Année {promotion.year + year-1}-{promotion.year + year}",
             int(os.getenv("ATTENDANCE_FROM")), int(os.getenv("ATTENDANCE_TO"))).generate()
         ui.download(pdf, f"emargement_{promotion.year + year-1}_{promotion.year + year}.pdf")
 
@@ -117,12 +118,61 @@ class Main:
         promotion = database_controller.promotion
         information = database_controller.load_information()
         pdf = MealController(promotion.participants, "Règlement des repas",
-            f"{information.name} {promotion.year}-{promotion.year + 2} - Années {promotion.year + year-1}-{promotion.year + year}").generate()
+            f"{information.name} {promotion.year}-{promotion.year + 2} - Année {promotion.year + year-1}-{promotion.year + year}").generate()
         ui.download(pdf, f"repas_{promotion.year + year-1}_{promotion.year + year}.pdf")
 
-    def _generate_invoices(self, year):
-        ui.notify(f"Facture {year}")
+    async def _generate_invoices(self, year):
+        promotion = database_controller.promotion
+        controller = InvoiceController(
+            promotion.participants, database_controller.senders,
+            database_controller.load_information(),
+            fee=promotion.year_fee,
+            logo_path=os.getenv('INVOICE_LOGO', 'assets/logo.png'),
+            school_year=f'{promotion.year}-{promotion.year + 2}',
+            year=promotion.year + year - 1
+        )
+        if controller.without_sender or controller.unknown_sender:
+            await self._show_invoice_problems(controller)
+            return                                   # rien n'est généré
+        try:
+            pdf = controller.generate()
+        except ValueError as e:
+            ui.notify(str(e), type='warning')
+            return
+        ui.download(pdf, 'factures.pdf')
 
+    async def _show_invoice_problems(self, controller):
+        def name(p) -> str:
+            return ' '.join(x.strip() for x in (p.firstname, p.name) if x and x.strip())
+
+        with ui.dialog().props('persistent') as dialog, ui.card().classes('w-[480px]'):
+            with ui.row().classes('items-center gap-2'):
+                ui.icon('error', color='negative', size='md')
+                ui.label('Impossible de générer les factures').classes('text-lg font-bold')
+
+            if controller.without_sender:
+                ui.label(f"{len(controller.without_sender)} participant(s) sans envoyant :") \
+                    .classes('font-bold')
+                with ui.column().classes('w-full gap-0 max-h-40 overflow-auto'):
+                    for p in controller.without_sender:
+                        ui.label(f'• {name(p)}')
+
+            if controller.unknown_sender:
+                ui.label(f"{len(controller.unknown_sender)} participant(s) ont un envoyant qui "
+                         "n'existe pas dans la liste :").classes('font-bold')
+                with ui.column().classes('w-full gap-0 max-h-40 overflow-auto'):
+                    for p in controller.unknown_sender:
+                        ui.label(f'• {name(p)} : « {p.sender_label} »')
+
+            ui.label("Corrigez la colonne « Envoyé par » dans l'onglet des participants, "
+                     "puis relancez la génération.").classes('text-sm text-gray-600')
+            with ui.row().classes('w-full justify-end'):
+                ui.button('Fermer', on_click=dialog.close)
+
+        dialog.open()
+        await dialog
+        dialog.delete()        
+        
     def _generate_mails(self):
         promotion = database_controller.promotion
         persons = sorted(promotion.participants + database_controller.addressees, key=lambda p: p.name)
@@ -174,16 +224,17 @@ class Main:
         persons = promotion.participants + database_controller.animators
         information = database_controller.load_information()
         pdf = FileLabelController(persons, intervention, information.file_tag, extra_identities=('INTERVENANT', 'ARCHIVE')).generate()
-        ui.download(pdf, f"dossier_{promotion.year}_{promotion.year + 2}.pdf")
+        ui.download(pdf, f"dossier.pdf")
 
     def _generate_badges(self):
+        promotion = database_controller.promotion
         tag = database_controller.load_information().badge_tag
         pdf = BadgeController(
             database_controller.promotion.participants, tag,
             logo_path=os.getenv('BADGE_LOGO', 'assets/logo.png'),
             font_path=os.getenv('BADGE_FONT', 'assets/comicbd.ttf'),
         ).generate()
-        ui.download(pdf, 'badges.pdf')
+        ui.download(pdf, f"badges_{promotion.year}_{promotion.year + 2}.pdf")
     
     def run(self):
         ui.run(title='Ecole du diocèse')
