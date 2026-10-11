@@ -5,6 +5,7 @@ import os
 from dotenv import load_dotenv
 from nicegui import ui
 
+from controller.badge_controller import BadgeController
 from controller.database_controller import database_controller
 from controller.file_label_controller import FileLabelController
 from controller.meal_controller import MealController
@@ -176,7 +177,13 @@ class Main:
         ui.download(pdf, f"dossier_{promotion.year}_{promotion.year + 2}.pdf")
 
     def _generate_badges(self):
-        ui.notify("Badges")
+        tag = database_controller.load_information().badge_tag
+        pdf = BadgeController(
+            database_controller.promotion.participants, tag,
+            logo_path=os.getenv('BADGE_LOGO', 'assets/logo.png'),
+            font_path=os.getenv('BADGE_FONT', 'assets/comicbd.ttf'),
+        ).generate()
+        ui.download(pdf, 'badges.pdf')
     
     def run(self):
         ui.run(title='Ecole du diocèse')
