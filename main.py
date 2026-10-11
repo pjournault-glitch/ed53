@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from nicegui import ui
 
 from controller.database_controller import database_controller
+from controller.meal_controller import MealController
 from tabs.about_tab import AboutTab
 from tabs.addressees_tab import AddresseesTab
 from tabs.information_tab import InformationTab
@@ -35,8 +36,8 @@ class Main:
                 ui.label("Générations")
                 self._add_menu_item("sym_o_signature", "Feuilles d'émargement Année 1", lambda: self._generate_attendance(1))
                 self._add_menu_item("sym_o_signature", "Feuilles d'émargement Année 2", lambda: self._generate_attendance(2))
-                self._add_menu_item("sym_o_room_service", "Repas Année 1", lambda: self._generate_meals(1))
-                self._add_menu_item("sym_o_room_service", "Repas Année 2", lambda: self._generate_meals(2))
+                self._add_menu_item("sym_o_room_service", "Repas Année 1", lambda: self._generate_meal(1))
+                self._add_menu_item("sym_o_room_service", "Repas Année 2", lambda: self._generate_meal(2))
                 self._add_menu_item("sym_o_payments", "Factures Année 1", lambda: self._generate_invoices(1))
                 self._add_menu_item("sym_o_payments", "Factures Année 2", lambda: self._generate_invoices(2))
                 self._add_menu_item("sym_o_mail", "Etiquettes courriers", self._generate_mails)
@@ -97,8 +98,12 @@ class Main:
             int(os.getenv("ATTENDANCE_FROM")), int(os.getenv("ATTENDANCE_TO"))).generate()
         ui.download(pdf, f"emargement_{promotion.year + year-1}_{promotion.year + year}.pdf")
 
-    def _generate_meals(self, year):
-        ui.notify(f"Repas {year}")
+    def _generate_meal(self, year):
+        promotion = database_controller.promotion
+        information = database_controller.load_information()
+        pdf = MealController(promotion.participants, "Règlement des repas",
+            f"{information.name} {promotion.year}-{promotion.year + 2} - Années {promotion.year + year-1}-{promotion.year + year}").generate()
+        ui.download(pdf, f"repas_{promotion.year + year-1}_{promotion.year + year}.pdf")
 
     def _generate_invoices(self, year):
         ui.notify(f"Facture {year}")
