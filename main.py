@@ -1,4 +1,5 @@
 import asyncio
+import os
 
 from dotenv import load_dotenv
 from nicegui import ui
@@ -11,6 +12,7 @@ from tabs.participants_tab import ParticipantsTab
 from tabs.promotion_tab import PromotionTab
 from tabs.senders_tab import SendersTab
 from tabs.animators_tab import AnimatorsTab
+from controller.attendance_controller import AttendanceController
 
 class Main:
     def __init__(self):
@@ -31,7 +33,8 @@ class Main:
         with ui.left_drawer().classes('bg-blue-100') as self.left_drawer:
             with ui.list().props('padding'):
                 ui.label("Générations")
-                self._add_menu_item("sym_o_signature", "Feuilles d'émargement", self._generate_signatures)
+                self._add_menu_item("sym_o_signature", "Feuilles d'émargement Année 1", lambda: self._generate_attendance(1))
+                self._add_menu_item("sym_o_signature", "Feuilles d'émargement Année 2", lambda: self._generate_attendance(2))
                 self._add_menu_item("sym_o_room_service", "Repas Année 1", lambda: self._generate_meals(1))
                 self._add_menu_item("sym_o_room_service", "Repas Année 2", lambda: self._generate_meals(2))
                 self._add_menu_item("sym_o_payments", "Factures Année 1", lambda: self._generate_invoices(1))
@@ -86,8 +89,13 @@ class Main:
             with ui.item_section():
                 ui.item_label(label)
 
-    def _generate_signatures(self):
-        ui.notify("Emargement")
+    def _generate_attendance(self, year):
+        promotion = database_controller.promotion
+        information = database_controller.load_information()
+        pdf = AttendanceController(promotion.participants, "Feuille d'émargement",
+            f"{information.name} {promotion.year}-{promotion.year + 2} - Années {promotion.year + year-1}-{promotion.year + year}",
+            int(os.getenv("ATTENDANCE_FROM")), int(os.getenv("ATTENDANCE_TO"))).generate()
+        ui.download(pdf, f"emargement_{promotion.year + year-1}_{promotion.year + year}.pdf")
 
     def _generate_meals(self, year):
         ui.notify(f"Repas {year}")
