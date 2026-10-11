@@ -1,4 +1,5 @@
 from dataclasses import asdict
+import json
 import os
 import uuid
 from nicegui import ui, run
@@ -17,20 +18,43 @@ class AbstractPersonsTab:
             self._busy_label = ui.label("Import en cours…")        
         self.grille = ui.aggrid({'rowSelection': {'mode': 'multiRow', 'checkboxes': True, 'headerCheckbox': True, 'enableClickSelection': False},
             'defaultColDef': {'resizable': True, 'sortable': True, 'width': 100},
-            'columnDefs': self._get_columns_def(),
+            'columnDefs': self._build_columns(),
             'rowData': self._get_row_data(),
             "localeText": {"noRowsToShow": self._get_no_row_text()},
             ':getRowId': 'params => params.data.id',
             'stopEditingWhenCellsLoseFocus': True,
             'singleClickEdit': True,
+            ':onCellValueChanged': 'params => params.api.refreshCells({rowNodes: [params.node], force: true})',
+            ':onFirstDataRendered': 'params => params.api.autoSizeAllColumns()',
+            ':onGridSizeChanged': """params => {
+                if (params.clientWidth > 0 && !params.api.__sized) {
+                    params.api.__sized = true;
+                    setTimeout(() => params.api.autoSizeAllColumns(), 50);
+                }
+            }""",
         }, auto_size_columns=False).classes('w-full grow min-h-[200px]')
         self.grille.on('cellValueChanged', self._save)
-        self._upload = ui.upload(auto_upload=True, max_files=1, on_upload=self._handle_upload).props('accept=.xlsx,.xlsm').classes('hidden')
         with ui.row():
-            self._btn_add = ui.button(f"Ajouter {self._get_person_name()}", on_click=self._add_line)
-            self._btn_import = ui.button("Importer un fichier excel", on_click=lambda: self._upload.run_method('pickFiles'))
-            self._btn_remove = ui.button('Supprimer la sélection', on_click=self._remove_selection, color='negative')
+            self._btn_add = ui.button(f"Ajouter {self._get_person_name()}", on_click=self._add_line, icon='person_add')
+            self._btn_import = ui.button("Importer un fichier excel", on_click=lambda: self._upload.run_method('pickFiles'), icon='upload_file')
+            self._btn_remove = ui.button('Supprimer la sélection', on_click=self._remove_selection, color='negative', icon='delete')
 
+    def _build_columns(self) -> list:
+        columns = self._get_columns_def()
+        required = self._get_required_fields()
+        editable = [c['field'] for c in columns if c.get('editable') and c.get('field')]
+        fields_js = json.dumps(editable)
+        # rouge si la cellule est vide alors qu'un autre champ de la ligne est renseigné
+        rule = ("!(x ?? '').toString().trim() && "
+                f"{fields_js}.some(f => (data[f] ?? '').toString().trim())")
+        for col in columns:
+            if col.get('field') in required:
+                col['cellClassRules'] = {**col.get('cellClassRules', {}), 'bg-red-300': rule}
+        return columns
+    
+    def _get_required_fields(self) -> set[str]:
+        raise NotImplementedError("La méthode _get_required_fields doit être implémentée dans la classe fille")   
+    
     def _get_person_name(self) -> str:
         raise NotImplementedError("La méthode _get_person_name doit être implémentée dans la classe fille")   
 
@@ -61,6 +85,9 @@ class AbstractPersonsTab:
     def _set_buttons_enabled(self, enabled: bool):
         for b in (self._btn_add, self._btn_import, self._btn_remove):
             b.set_enabled(enabled)
+
+    def autosize_columns(self):
+        ui.timer(0.2, lambda: self.grille.run_grid_method('autoSizeAllColumns'), once=True)            
 
     async def _handle_upload(self, e):
         self._set_buttons_enabled(False) 
@@ -128,12 +155,32 @@ class AbstractPersonsTab:
     @staticmethod
     def _label(row: dict) -> str:
         return f"{row.get('firstname', '')} {row.get('name', '')}".strip()
+
+    async def _confirm(self, message: str, confirm_label: str = 'Supprimer') -> bool:
+        with ui.dialog() as dialog, ui.card():
+            ui.label(message)
+            with ui.row().classes('w-full justify-end'):
+                ui.button('Annuler', on_click=lambda: dialog.submit(False)).props('flat')
+                ui.button(confirm_label, color='negative', on_click=lambda: dialog.submit(True))
+        result = await dialog
+        dialog.delete()   # évite d'accumuler des dialogues dans la page
+        return bool(result)
     
     async def _remove_selection(self):
         selection = await self.grille.get_selected_rows()
         if not selection:
             ui.notify('Aucune ligne sélectionnée', type='warning')
             return
+
+        if len(selection) == 1:
+            nom = self._label(selection[0]) or 'cette ligne'
+            message = f"Supprimer « {nom} » ?"
+        else:
+            message = f"Supprimer les {len(selection)} lignes sélectionnées ?"
+
+        if not await self._confirm(message):
+            return
+
         ids = {r['id'] for r in selection}
         lines = await self.grille.get_client_data()
         self.grille.options['rowData'] = [l for l in lines if l['id'] not in ids]

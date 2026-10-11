@@ -1,11 +1,18 @@
 from dataclasses import fields
-
+import json
+from nicegui import ui
 from controller.database_controller import database_controller
 from model.model import Sender
 from tabs.abstract_person_tab import AbstractPersonsTab
 
 
 class SendersTab(AbstractPersonsTab):
+
+    def __init__(self, on_show_participants=None):
+        # doit être défini avant super().__init__() (qui construit la grille)
+        self._on_show_participants = on_show_participants
+        super().__init__()
+        self.grille.on('cellClicked', self._on_cell_clicked)    
 
     def _get_empty_line(self):
         return {
@@ -33,11 +40,49 @@ class SendersTab(AbstractPersonsTab):
                 },},
                 {'headerName': 'Mèl', 'width': 200, 'field': 'mail', 'editable': True, 'cellClassRules': {'bg-red-200': r'x && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x)'}},
                 {'headerName': 'Organisation', 'width': 400, 'field': 'organisation', 'editable': True},
+                {'headerName': 'Participants', 'width': 130, 'field': 'nb_participants',
+                 'editable': False, 'sortable': True, 'type': 'numericColumn',
+                 ':cellRenderer': """params => {
+                     const n = Number(params.value ?? 0);
+                     if (!n) return '0';
+                     return `<a style="cursor:pointer;text-decoration:underline;color:#1976d2">${n}</a>`;
+                 }"""},
             ]
 
     def _get_row_data(self):
-        return self._grid_lines(database_controller.senders, 0)
+        lines = self._grid_lines(database_controller.senders, 0)
+        counts = self._participants_per_sender()
+        # _grid_lines garde l'ordre des envoyants : on peut les associer par position
+        for line, sender in zip(lines, database_controller.senders):
+            line['nb_participants'] = counts.get(sender.label, 0)
+        return lines
 
+    def _get_required_fields(self) -> set[str]:
+        return {'street', 'zip', 'city'}
+
+    def _build_columns(self) -> list:
+        columns = super()._build_columns()
+
+        def filled(f: str) -> str:
+            return f"(data['{f}'] ?? '').toString().trim()"
+
+        editable = [c['field'] for c in columns if c.get('editable') and c.get('field')]
+        row_not_empty = f"{json.dumps(editable)}.some(f => {filled('f').replace(chr(39) + 'f' + chr(39), 'f')})"
+        # ligne non vide, sans organisation, et sans le couple nom + prénom
+        invalid = (f"{row_not_empty} && !{filled('organisation')} "
+                   f"&& !({filled('name')} && {filled('firstname')})")
+
+        for col in columns:
+            field = col.get('field')
+            if field == 'organisation':
+                rule = invalid
+            elif field in ('name', 'firstname'):
+                rule = f"!{filled(field)} && {invalid}"   # rouge seulement si le champ est vide
+            else:
+                continue
+            col['cellClassRules'] = {**col.get('cellClassRules', {}), 'bg-red-300': rule}
+        return columns        
+    
     def _get_person_name(self) -> str:
         return "un envoyant"
 
@@ -58,3 +103,31 @@ class SendersTab(AbstractPersonsTab):
             if any(str(l.get(c) or '').strip() for c in self._get_fields())
         ]
         database_controller.save_senders()
+
+    @staticmethod
+    def _participants_per_sender() -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for p in database_controller.promotion.participants:
+            label = getattr(p, 'sender_label', '') or ''
+            if label:
+                counts[label] = counts.get(label, 0) + 1
+        return counts
+
+    def _row_label(self, row: dict) -> str:
+        sender = Sender(**{k: v for k, v in row.items() if k in self._get_fields()})
+        return sender.label
+
+    async def refresh_counts(self):
+        """Recalcule la colonne « Participants » sans reconstruire la grille."""
+        counts = self._participants_per_sender()
+        rows = await self.grille.get_client_data()
+        for r in rows:
+            r['nb_participants'] = counts.get(self._row_label(r), 0)
+        self.grille.run_grid_method('applyTransaction', {'update': rows})
+
+    async def _on_cell_clicked(self, e):
+        if e.args.get('colId') != 'nb_participants' or not e.args.get('value'):
+            return
+        row = e.args.get('data') or {}
+        if self._on_show_participants:
+            self._on_show_participants(self._row_label(row))    

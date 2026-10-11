@@ -1,10 +1,13 @@
+from datetime import date
+import logging
 from dataclasses import asdict
 import json
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-
 from model.model import Addressee, Animator, Information, Promotion, Sender
+
+logger = logging.getLogger(__name__)
 
 INFORMATION_FILE = "information.json"
 SENDERS_FILE = "senders.json"
@@ -107,19 +110,35 @@ class DatabaseController:
     def get_latest_promotion(self) -> int:
         return int(Path(self.get_latest_promotion_file()).stem[10:])
 
+    @staticmethod
+    def _atomic_write(path: Path, content: str) -> None:
+        """Écrit dans un fichier temporaire puis remplace : jamais de fichier à moitié écrit."""
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(content, encoding="utf-8")
+        os.replace(tmp, path)
+
+    def _write_json(self, path: Path, data, indent: int = 2) -> None:
+        """Enregistre les données au format JSON, puis archive une copie datée."""
+        content = json.dumps(data, ensure_ascii=False, indent=indent)
+        self._atomic_write(path, content)
+        self._archive(path, content)
+
+    def _archive(self, path: Path, content: str) -> None:
+        """Copie le contenu dans <db>/archive/<nom>_<AAAAMMJJ>.json (ex. animators_20261011.json)."""
+        try:
+            archive_dir = self.db_path / os.getenv("ARCHIVE")
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            name = f"{path.stem}_{date.today():%Y%m%d}{path.suffix}"
+            self._atomic_write(archive_dir / name, content)
+        except OSError:
+            # un échec d'archivage ne doit jamais empêcher l'enregistrement principal
+            logger.exception("Archivage impossible pour %s", path.name)
+
     """Charge une promotion, définie par son année"""
     def load_promotion(self, year: int) -> Promotion:
         name = Path(self.db_path) / f"promotion_{year}.json"
         with open(name, encoding='utf-8') as f:
-            return Promotion.from_dict(json.load(f))
-
-    """Enregistre une promotion"""
-    def save_promotion(self, promotion:Promotion) -> None:        
-        name = Path(self.db_path) / f"promotion_{promotion.year}.json"
-        tmp = f"{name}.tmp"
-        with open(tmp, 'w', encoding='utf-8') as f:
-            json.dump(asdict(promotion), f, ensure_ascii=False, indent=4)
-        os.replace(tmp, name)        
+            return Promotion.from_dict(json.load(f))    
 
     """Renvoi la liste des promotions existantes"""
     def existing_promotions(self) -> list[int]:
@@ -135,27 +154,13 @@ class DatabaseController:
         with open(name, encoding='utf-8') as f:
             return Information.from_dict(json.load(f))
 
-    """Enregistre les informations générales"""
-    def save_information(self, information:Information) -> None:        
-        name = Path(self.db_path) / INFORMATION_FILE
-        tmp = f"{name}.tmp"
-        with open(tmp, 'w', encoding='utf-8') as f:
-            json.dump(asdict(information), f, ensure_ascii=False, indent=4)
-        os.replace(tmp, name) 
-
     """Charge les envoyants"""
     def load_senders(self) -> dict[str, Sender]:
         path = Path(self.db_path) / SENDERS_FILE
         if not path.exists():
             return []
         data = json.loads(path.read_text(encoding="utf-8"))
-        return [Sender(**s) for s in data]
-
-    """Enregistre les envoyants"""
-    def save_senders(self) -> None:
-        path = Path(self.db_path) / SENDERS_FILE
-        data = [asdict(s) for s in self.senders]
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")         
+        return [Sender(**s) for s in data]      
 
     """Renvoie tous les envoyants"""
     def get_all_senders(self) -> list[Sender]:
@@ -171,13 +176,7 @@ class DatabaseController:
         if not path.exists():
             return []
         data = json.loads(path.read_text(encoding="utf-8"))
-        return [Animator(**s) for s in data]
-
-    """Enregistre les animateurs"""
-    def save_animators(self) -> None:
-        path = Path(self.db_path) / ANIMATORS_FILE
-        data = [asdict(s) for s in self.animators]
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")         
+        return [Animator(**s) for s in data]      
     
     """Charge les destinataires"""
     def load_addressees(self) -> dict[str, Addressee]:
@@ -187,10 +186,24 @@ class DatabaseController:
         data = json.loads(path.read_text(encoding="utf-8"))
         return [Addressee(**s) for s in data]
 
+    """Enregistre une promotion"""
+    def save_promotion(self, promotion: Promotion) -> None:
+        self._write_json(self.db_path / f"promotion_{promotion.year}.json", asdict(promotion), indent=4)
+
+    """Enregistre les informations générales"""
+    def save_information(self, information: Information) -> None:
+        self._write_json(self.db_path / INFORMATION_FILE, asdict(information), indent=4)
+
+    """Enregistre les envoyants"""
+    def save_senders(self) -> None:
+        self._write_json(self.db_path / SENDERS_FILE, [asdict(s) for s in self.senders])
+
+    """Enregistre les animateurs"""
+    def save_animators(self) -> None:
+        self._write_json(self.db_path / ANIMATORS_FILE, [asdict(s) for s in self.animators])
+
     """Enregistre les destinataires"""
     def save_addressees(self) -> None:
-        path = Path(self.db_path) / ADDRESSEE_FILE
-        data = [asdict(s) for s in self.addressees]
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")         
+        self._write_json(self.db_path / ADDRESSEE_FILE, [asdict(s) for s in self.addressees])    
 
 database_controller = DatabaseController()

@@ -1,5 +1,17 @@
 from dataclasses import dataclass
 
+@dataclass
+class Tag:
+    margin_top: float
+    margin_bottom: float 
+    margin_left: float
+    margin_right: float
+    nb_horizontal: int 
+    nb_vertical: int
+
+    @classmethod
+    def from_dict(cls, data: dict | None) -> 'Tag | None':
+        return cls(**data) if data else None    
 
 @dataclass
 class Information:
@@ -13,9 +25,12 @@ class Information:
     mail: str
     bic: str
     iban: str
+    mail_tag: Tag | None = None
+    file_tag: Tag | None = None
+    badge_tag: Tag | None = None
 
     @classmethod
-    def from_dict(cls, data: dict) -> 'Promotion':
+    def from_dict(cls, data: dict) -> 'Information':
         return cls(
             name=data['name'],
             addressee=data['addressee'],
@@ -26,8 +41,10 @@ class Information:
             phone=data['phone'],
             mail=data['mail'],
             bic=data['bic'],
-            iban=data['iban']
-        ) 
+            iban=data['iban'],
+            mail_tag=Tag.from_dict(data.get('mail_tag')),
+            file_tag=Tag.from_dict(data.get('file_tag')),
+            badge_tag=Tag.from_dict(data.get('badge_tag'))        ) 
 
 @dataclass
 class Sender:

@@ -1,5 +1,6 @@
 import asyncio
 from dataclasses import asdict, fields
+import json
 import unicodedata
 import uuid
 from nicegui import run
@@ -23,6 +24,12 @@ class ParticipantsTab(AbstractPersonsTab):
     def __init__(self):
         database_controller.subscribe_promotion_changed(self.reload)
         database_controller.subscribe_senders_changed(self.reload)
+        self._filter_sender = ui.select(
+            options=self._sender_choices(),
+            label='Filtrer par envoyant',
+            clearable=True,
+            on_change=self._apply_sender_filter,
+        ).classes('w-64')        
         super().__init__()
 
     def _get_empty_line(self):
@@ -53,11 +60,14 @@ class ParticipantsTab(AbstractPersonsTab):
                 {'headerName': 'Envoyé par', 'width': 500, 'field': 'sender_label', 'editable': True,
                  'cellEditor': 'agSelectCellEditor',
                  'cellEditorParams': {'values': self._sender_choices()},
-                 ':valueSetter': SENDER_SETTER},
+                 ':valueSetter': SENDER_SETTER, 'filter': 'agTextColumnFilter','cellClassRules': self._sender_class_rules()},
             ]
 
     def _get_row_data(self):
         return self._grid_lines(database_controller.promotion.participants, 0)
+
+    def _get_required_fields(self) -> set[str]:
+        return {'firstname', 'name', 'street', 'zip', 'city', 'phone'}    
 
     def _get_person_name(self) -> str:
         return "un participant"
@@ -75,14 +85,27 @@ class ParticipantsTab(AbstractPersonsTab):
         return sorted((s.label for s in database_controller.senders), key=_cle_tri)
 
     def reload(self):
-        """Recharge la grille : participants de la promotion en cours + liste des senders."""
+        choices = self._sender_choices()
         for col in self.grille.options['columnDefs']:
             if col.get('field') == 'sender_label':
-                col['cellEditorParams'] = {'values': self._sender_choices()}
+                col['cellEditorParams'] = {'values': choices}
+                col['cellClassRules'] = self._sender_class_rules()
+        self._filter_sender.set_options(choices)
+        if self._filter_sender.value not in choices:
+            self._filter_sender.value = None
         self.grille.options['rowData'] = self._grid_lines(
             database_controller.promotion.participants
         )
         self.grille.update()
+
+    def filter_by_sender(self, label: str):
+        """Sélectionne un envoyant dans la liste, ce qui filtre la grille."""
+        choices = self._sender_choices()
+        self._filter_sender.set_options(choices)      # liste à jour avant de choisir
+        if label in choices:
+            self._filter_sender.set_value(label)      # déclenche _apply_sender_filter
+        else:
+            self._filter_sender.set_value(None)       # libellé inconnu : pas de filtre
 
     async def _save(self):
         lines = await self.grille.get_client_data()
@@ -92,3 +115,14 @@ class ParticipantsTab(AbstractPersonsTab):
             if any(str(l.get(c) or '').strip() for c in self._get_fields())
         ]
         database_controller.save_promotion(database_controller.promotion)
+
+    async def _apply_sender_filter(self, e):
+        model = ({'filterType': 'text', 'type': 'equals', 'filter': e.value}
+                 if e.value else None)
+        await self.grille.run_grid_method('setColumnFilterModel', 'sender_label', model)
+        await self.grille.run_grid_method('onFilterChanged')
+
+    def _sender_class_rules(self) -> dict:
+        valid = json.dumps(self._sender_choices(), ensure_ascii=False)
+        # rouge si la cellule n'est pas vide et n'est pas dans la liste des libellés
+        return {'bg-red-200': f'x && !{valid}.includes(x)'}        

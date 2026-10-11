@@ -1,3 +1,5 @@
+import asyncio
+
 from dotenv import load_dotenv
 from nicegui import ui
 
@@ -15,7 +17,10 @@ class Main:
         ui.query('.q-page').classes('flex')
         ui.query('.nicegui-content').classes('w-full')
         ui.add_css('.majuscules, .majuscules input { text-transform: uppercase; }')
-        ui.add_css('body { font-size: 12px; }', shared=True)   
+        ui.add_css('body { font-size: 12px; }', shared=True)
+        ui.add_css('''.champ-calcule { font-size: 16px; line-height: 1.2; letter-spacing: .00937em; font-weight: 400; color: rgba(0, 0, 0, .6); }
+                    .body--dark .champ-calcule { color: rgba(255, 255, 255, .7); }
+                    ''')
 
         load_dotenv(override=True)
         self._build_left_drawer()
@@ -39,15 +44,23 @@ class Main:
         with ui.header().classes(replace='row items-center') as header:
             ui.button(on_click=lambda: self.left_drawer.toggle(), icon='menu').props('flat color=white')
             etat = {'titre': 'Promotion'}
-            with ui.tabs().props('inline-label') as self.tabs:
+            with ui.tabs(on_change=self._on_tab_change).props('inline-label') as self.tabs:
                 with ui.tab(name='promo', label=''):
                     ui.label().bind_text_from(database_controller, 'promotion_year', backward=lambda y: f'Promotion ({y} - {y+2})' if y else 'Promotion').style('font-size: 16px !important')
-                ui.tab('participants', label='Participants').style('font-size: 18px !important')
+                self._tab_participants = ui.tab('participants', label='Participants').style('font-size: 18px !important')
                 ui.tab('animators', label='Animateurs').style('font-size: 18px !important')
                 ui.tab('addressees', label='Destinataires').style('font-size: 18px !important')
-                ui.tab('senders', label='Envoyants').style('font-size: 18px !important')
+                self._tab_senders = ui.tab('senders', label='Envoyants').style('font-size: 18px !important')
                 ui.tab('info', label='Informations Générales', icon='settings').style('font-size: 18px !important')
                 ui.tab('apropos', label='A PROPOS', icon='info').style('font-size: 18px !important')
+
+    def _show_participants(self, label: str):
+        self.tabs.set_value(self._tab_participants)            # bascule sur l'onglet
+        self._participants_tab.filter_by_sender(label)    # applique le filtre
+
+    def _on_tab_change(self, e):
+        if e.value == self._tab_senders:                  # recalcule les compteurs au retour
+            asyncio.create_task(self._senders_tab.refresh_counts())
 
     def _build_tab_pages(self):
         with ui.tab_panels(self.tabs, value='promo').classes('w-full grow'):
@@ -56,13 +69,13 @@ class Main:
             with ui.tab_panel('info'):
                 InformationTab()
             with ui.tab_panel('participants').classes('flex flex-col min-h-0'):
-                ParticipantsTab()
+                self._participants_tab = ParticipantsTab()
             with ui.tab_panel('animators').classes('flex flex-col min-h-0'):
                 AnimatorsTab()                
             with ui.tab_panel('addressees').classes('flex flex-col min-h-0'):
                 AddresseesTab()                
             with ui.tab_panel('senders').classes('flex flex-col min-h-0'):
-                SendersTab()                
+                self._senders_tab = SendersTab(on_show_participants=self._show_participants)                
             with ui.tab_panel('apropos'):
                 AboutTab()                
 
