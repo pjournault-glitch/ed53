@@ -1,3 +1,17 @@
+import logging
+import os
+import sys
+from pathlib import Path
+
+from util.logging import install_asyncio_handler, setup_logging
+
+BASE_DIR = Path(sys.executable).parent if getattr(sys, 'frozen', False) else Path(__file__).parent
+LOG_FILE = setup_logging(BASE_DIR / 'logs', getattr(logging, os.getenv('LOG_LEVEL', 'INFO').upper(), logging.INFO))
+logger = logging.getLogger('app')
+
+from nicegui import app, ui
+from controller.database_controller import database_controller
+
 import asyncio
 from datetime import datetime
 from functools import partial
@@ -9,6 +23,7 @@ from nicegui import app, ui
 
 from controller.badge_controller import BadgeController
 from controller.database_controller import database_controller
+from controller.export_excel_controller import ExportExcelController
 from controller.file_label_controller import FileLabelController
 from controller.invoice_controller import InvoiceController
 from controller.meal_controller import MealController
@@ -21,7 +36,6 @@ from tabs.senders_tab import SendersTab
 from tabs.animators_tab import AnimatorsTab
 from controller.attendance_controller import AttendanceController
 from controller.mail_label_controller import MailLabelController
-
 
 BYE_HTML = """<!doctype html>
 <html lang="fr">
@@ -69,7 +83,22 @@ def _to_display(value) -> str:
 
 @app.get('/bye')
 def bye():
-    return HTMLResponse(BYE_HTML)  
+    return HTMLResponse(BYE_HTML)
+
+@app.on_startup
+async def _on_startup():
+    install_asyncio_handler(logger)
+    logger.info('Application démarrée, données : %s', database_controller.db_path)
+
+@app.on_exception
+def _on_exception(exception: Exception):
+    """Appelé par NiceGUI pour toute erreur dans un handler (clic, événement de grille, timer…)."""
+    logger.error('Erreur dans l\'interface', exc_info=exception)
+    try:
+        ui.notify("Une erreur est survenue. Elle a été enregistrée dans le journal.", type='negative')
+    except Exception:
+        pass            # pas de contexte d'interface disponible : l'erreur est de toute façon dans le journal
+
 
 class Main:
     def __init__(self):
@@ -80,7 +109,16 @@ class Main:
         ui.add_css('''.champ-calcule { font-size: 16px; line-height: 1.2; letter-spacing: .00937em; font-weight: 400; color: rgba(0, 0, 0, .6); }
                     .body--dark .champ-calcule { color: rgba(255, 255, 255, .7); }
                     ''')
+        ui.add_head_html("""
+        <script>
+        window.addEventListener('error', e => emitEvent('js_error',
+            {message: e.message, source: e.filename, line: e.lineno}));
+        window.addEventListener('unhandledrejection', e => emitEvent('js_error',
+            {message: String(e.reason), source: 'promise', line: 0}));
+        </script>""", shared=True)
 
+        ui.on('js_error', lambda e: logger.error('Erreur JavaScript : %s', e.args))
+        
         load_dotenv(override=True)
         self._build_drawer()
         self._build_tabs()

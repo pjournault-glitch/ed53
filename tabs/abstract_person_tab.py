@@ -39,7 +39,7 @@ class AbstractPersonsTab:
         self.grille.on('firstDataRendered', self._update_count)     
         with ui.row().classes('w-full items-center justify-between no-wrap'):
             with ui.row():
-                self._btn_add = ui.button(f"Ajouter {self._get_person_name()}", on_click=self._add_line, icon='person_add')
+                self._btn_add = ui.button(f"Ajouter une ligne", on_click=self._add_line, icon='person_add')
                 if os.getenv("SHOW_IMPORT").lower() == "yes":
                     self._btn_import = ui.button("Importer un fichier excel", on_click=lambda: self._upload.run_method('pickFiles'), icon='upload_file')
                 self._btn_remove = ui.button('Supprimer la sélection', on_click=self._remove_selection, color='negative', icon='delete')
