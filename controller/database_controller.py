@@ -7,8 +7,6 @@ from pathlib import Path
 from dotenv import load_dotenv
 from model.model import Addressee, Animator, Information, Promotion, Sender
 
-logger = logging.getLogger(__name__)
-
 INFORMATION_FILE = "information.json"
 SENDERS_FILE = "senders.json"
 ANIMATORS_FILE = "animators.json"
@@ -100,6 +98,10 @@ class DatabaseController:
     @property
     def promotion_year(self) -> int:
         return self.promotion.year if self.promotion else None
+
+    @property
+    def promotion_participants(self) -> list:
+        return (self.promotion.participants if self.promotion else None) or []
 
     """Renvoi le nom de fichier de la dernière promotion"""
     def get_latest_promotion_file(self) -> str:

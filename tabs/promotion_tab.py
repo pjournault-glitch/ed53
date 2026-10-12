@@ -78,5 +78,6 @@ class PromotionTab:
 
     def _select_promotion(self, year):
         database_controller.promotion = database_controller.load_promotion(year)
+        self.choix.value = None
         self._display_header.refresh()
 

@@ -2,18 +2,18 @@ import logging
 import os
 import sys
 from pathlib import Path
+import traceback
 
 from util.logging import install_asyncio_handler, setup_logging
 
 BASE_DIR = Path(sys.executable).parent if getattr(sys, 'frozen', False) else Path(__file__).parent
 LOG_FILE = setup_logging(BASE_DIR / 'logs', getattr(logging, os.getenv('LOG_LEVEL', 'INFO').upper(), logging.INFO))
-logger = logging.getLogger('app')
 
-from nicegui import app, ui
+from nicegui import Client, app, ui
 from controller.database_controller import database_controller
 
 import asyncio
-from datetime import datetime
+from datetime import date, datetime
 from functools import partial
 import os
 
@@ -81,6 +81,8 @@ def _to_display(value) -> str:
             return value          # déjà au bon format, ou texte libre
     return ''  
 
+logger = logging.getLogger('app')
+
 @app.get('/bye')
 def bye():
     return HTMLResponse(BYE_HTML)
@@ -99,9 +101,15 @@ def _on_exception(exception: Exception):
     except Exception:
         pass            # pas de contexte d'interface disponible : l'erreur est de toute façon dans le journal
 
+@app.on_disconnect
+async def arreter_si_plus_personne(client: Client):
+    await asyncio.sleep(3)  # délai de grâce
+    if not any(c.has_socket_connection for c in Client.instances.values()):
+        app.shutdown()
 
 class Main:
     def __init__(self):
+        logger.info(f"PID={os.getpid()}")
         ui.query('.q-page').classes('flex')
         ui.query('.nicegui-content').classes('w-full')
         ui.add_css('.majuscules, .majuscules input { text-transform: uppercase; }')
@@ -177,11 +185,19 @@ class Main:
             with ui.tabs(on_change=self._on_tab_change).props('inline-label') as self.tabs:
                 with ui.tab(name='promo', label=''):
                     ui.label().bind_text_from(database_controller, 'promotion_year', backward=lambda y: f'Promotion ({y} - {y+2})' if y else 'Promotion').style('font-size: 16px !important')
-                self._tab_participants = ui.tab('participants', label='Participants').style('font-size: 18px !important')
-                ui.tab('animators', label='Animateurs').style('font-size: 18px !important')
-                ui.tab('addressees', label='Destinataires').style('font-size: 18px !important')
-                self._tab_senders = ui.tab('senders', label='Envoyants').style('font-size: 18px !important')
-                ui.tab('info', label='Informations Générales', icon='settings').style('font-size: 18px !important')
+                with ui.tab('participants') as self._tab_participants:
+                    ui.badge(color='grey', text_color='white').classes('ml-2').props('rounded').bind_text_from(database_controller, 'promotion_participants',
+                        backward=lambda participants: str(len(participants)))
+                with ui.tab('animators', label='Animateurs').style('font-size: 18px !important'):
+                    ui.badge(color='grey', text_color='white').classes('ml-2').props('rounded').bind_text_from(database_controller, 'animators',
+                        backward=lambda animators: str(len(animators)))
+                with ui.tab('addressees', label='Destinataires').style('font-size: 18px !important'):
+                    ui.badge(color='grey', text_color='white').classes('ml-2').props('rounded').bind_text_from(database_controller, 'addressees',
+                        backward=lambda addressees: str(len(addressees)))
+                with ui.tab('senders', label='Envoyants').style('font-size: 18px !important') as self._tab_senders:
+                    ui.badge(color='grey', text_color='white').classes('ml-2').props('rounded').bind_text_from(database_controller, 'senders',
+                        backward=lambda senders: str(len(senders)))
+                ui.tab('info', label='Configuration', icon='settings').style('font-size: 18px !important')
                 ui.tab('apropos', label='A PROPOS', icon='info').style('font-size: 18px !important')
 
     def _show_participants(self, label: str):
@@ -381,6 +397,7 @@ class Main:
         os._exit(0)               
 
     def run(self):
-        ui.run(title='Ecole du diocèse', language='fr', reload=True, uvicorn_reload_excludes='logs/*,db/*,.venv/*')
+        ui.run(title='Ecole du diocèse', reload=False, language='fr', uvicorn_reload_excludes='logs/*,db/*,.venv/*')
 
-Main().run()    
+if __name__ == '__main__':
+    Main().run()
