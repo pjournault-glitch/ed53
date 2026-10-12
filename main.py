@@ -1,9 +1,11 @@
 import asyncio
 from datetime import datetime
+from functools import partial
 import os
 
 from dotenv import load_dotenv
-from nicegui import ui
+from fastapi.responses import HTMLResponse
+from nicegui import app, ui
 
 from controller.badge_controller import BadgeController
 from controller.database_controller import database_controller
@@ -19,7 +21,28 @@ from tabs.senders_tab import SendersTab
 from tabs.animators_tab import AnimatorsTab
 from controller.attendance_controller import AttendanceController
 from controller.mail_label_controller import MailLabelController
-from model.model import Addressee
+
+
+BYE_HTML = """<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Application fermée</title>
+  <style>
+    body { font-family: sans-serif; display: flex; align-items: center; justify-content: center;
+           height: 100vh; margin: 0; background: #f5f5f5; color: #333; }
+    .box { text-align: center; }
+    h1 { font-weight: 500; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>L'application est fermée</h1>
+    <p>Vous pouvez maintenant fermer cette page.</p>
+  </div>
+</body>
+</html>"""
+
 
 def _required(v) -> bool:
     return bool(v and v.strip())
@@ -30,6 +53,23 @@ def _valid_date(v) -> bool:
         return True
     except ValueError:
         return False
+
+def _to_display(value) -> str:
+    """Convertit une date (objet date, datetime ou texte ISO) en JJ/MM/AAAA."""
+    if isinstance(value, datetime):
+        value = value.date()
+    if isinstance(value, date):
+        return value.strftime('%d/%m/%Y')
+    if isinstance(value, str) and value:
+        try:
+            return date.fromisoformat(value).strftime('%d/%m/%Y')
+        except ValueError:
+            return value          # déjà au bon format, ou texte libre
+    return ''  
+
+@app.get('/bye')
+def bye():
+    return HTMLResponse(BYE_HTML)  
 
 class Main:
     def __init__(self):
@@ -42,23 +82,55 @@ class Main:
                     ''')
 
         load_dotenv(override=True)
-        self._build_left_drawer()
+        self._build_drawer()
         self._build_tabs()
         self._build_tab_pages()
+        self.last_speaker = None
+        self.last_title = None
+        self.last_intervention_date = None
 
-    def _build_left_drawer(self):
+    def _build_drawer(self) -> None:
+        groups = [
+            self._menu_items_group1(),
+            self._menu_items_group2(),
+            self._menu_items_group3(),
+            [('sym_o_power_settings_new', 'Quitter', self._quit)],
+        ]
         with ui.left_drawer().classes('bg-blue-100') as self.left_drawer:
-            with ui.list().props('padding'):
-                ui.label("Générations")
-                self._add_menu_item("sym_o_signature", "Feuilles d'émargement Année 1", lambda: self._generate_attendance(1))
-                self._add_menu_item("sym_o_signature", "Feuilles d'émargement Année 2", lambda: self._generate_attendance(2))
-                self._add_menu_item("sym_o_room_service", "Repas Année 1", lambda: self._generate_meal(1))
-                self._add_menu_item("sym_o_room_service", "Repas Année 2", lambda: self._generate_meal(2))
-                self._add_menu_item("sym_o_payments", "Factures Année 1", lambda: self._generate_invoices(1))
-                self._add_menu_item("sym_o_payments", "Factures Année 2", lambda: self._generate_invoices(2))
-                self._add_menu_item("sym_o_mail", "Etiquettes courriers", self._generate_mails)
-                self._add_menu_item("sym_o_files", "Etiquettes dossiers", self._generate_files)
-                self._add_menu_item("sym_o_badge", "Badges", self._generate_badges)
+            with ui.column().classes('w-full h-full no-wrap gap-0'):
+                for i, items in enumerate(groups):
+                    if i:
+                        ui.separator()
+                    with ui.list().classes('w-full py-1'):
+                        for icon, label, handler in items:
+                            self._add_menu_item(icon, label, handler)
+
+    def _menu_items_group1(self) -> list[tuple]:
+        """Entrées du menu : (icône, libellé, action)."""
+        per_year = [
+            ('sym_o_signature', "Emargement", self._generate_attendance),
+            ('sym_o_room_service', "Règlement repas", self._generate_meal),
+            ('sym_o_receipt_long', "Factures", self._generate_invoices),
+        ]
+        return [
+            (icon, f'{label} (année {year})', partial(handler, year))
+            for icon, label, handler in per_year
+            for year in (1, 2)
+        ]
+
+    def _menu_items_group2(self) -> list[tuple]:
+        """Entrées du menu : (icône, libellé, action)."""
+        return [
+            ('sym_o_mail', 'Etiquettes courriers', self._generate_mails),
+            ('sym_o_files', 'Etiquettes dossiers', self._generate_files),
+            ('sym_o_badge', 'Badges', self._generate_badges),
+        ]
+
+    def _menu_items_group3(self) -> list[tuple]:
+        """Entrées du menu : (icône, libellé, action)."""
+        return [
+            ('sym_o_table_view', 'Export excel', self._export_excel),
+        ]
 
     def _build_tabs(self):
         with ui.header().classes(replace='row items-center') as header:
@@ -109,17 +181,23 @@ class Main:
     def _generate_attendance(self, year):
         promotion = database_controller.promotion
         information = database_controller.load_information()
-        pdf = AttendanceController(promotion.participants, "Feuille d'émargement",
-            f"{information.name} {promotion.year}-{promotion.year + 2} - Année {promotion.year + year-1}-{promotion.year + year}",
-            int(os.getenv("ATTENDANCE_FROM")), int(os.getenv("ATTENDANCE_TO"))).generate()
-        ui.download(pdf, f"emargement_{promotion.year + year-1}_{promotion.year + year}.pdf")
+        try:
+            pdf = AttendanceController(promotion.participants, "Feuille d'émargement",
+                f"{information.name} {promotion.year}-{promotion.year + 2} - Année {promotion.year + year-1}-{promotion.year + year}",
+                int(os.getenv("ATTENDANCE_FROM")), int(os.getenv("ATTENDANCE_TO"))).generate()
+            ui.download(pdf, f"emargement_{promotion.year + year-1}_{promotion.year + year}.pdf")
+        except ValueError as e:
+            ui.notify(str(e), type='warning')
 
     def _generate_meal(self, year):
-        promotion = database_controller.promotion
-        information = database_controller.load_information()
-        pdf = MealController(promotion.participants, "Règlement des repas",
-            f"{information.name} {promotion.year}-{promotion.year + 2} - Année {promotion.year + year-1}-{promotion.year + year}").generate()
-        ui.download(pdf, f"repas_{promotion.year + year-1}_{promotion.year + year}.pdf")
+        try:
+            promotion = database_controller.promotion
+            information = database_controller.load_information()
+            pdf = MealController(promotion.participants, "Règlement des repas",
+                f"{information.name} {promotion.year}-{promotion.year + 2} - Année {promotion.year + year-1}-{promotion.year + year}").generate()
+            ui.download(pdf, f"repas_{promotion.year + year-1}_{promotion.year + year}.pdf")
+        except ValueError as e:
+            ui.notify(str(e), type='warning')
 
     async def _generate_invoices(self, year):
         promotion = database_controller.promotion
@@ -174,30 +252,33 @@ class Main:
         dialog.delete()        
         
     def _generate_mails(self):
-        promotion = database_controller.promotion
-        persons = sorted(promotion.participants + database_controller.addressees, key=lambda p: p.name)
-        information = database_controller.load_information()
-        pdf = MailLabelController(persons, information.mail_tag).generate()
-        ui.download(pdf, f"courrier_{promotion.year}_{promotion.year + 2}.pdf")
+        try:        
+            promotion = database_controller.promotion
+            persons = sorted(promotion.participants + database_controller.addressees, key=lambda p: p.name)
+            information = database_controller.load_information()
+            pdf = MailLabelController(persons, information.mail_tag).generate()
+            ui.download(pdf, f"courrier_{promotion.year}_{promotion.year + 2}.pdf")
+        except ValueError as e:
+            ui.notify(str(e), type='warning')
 
     async def ask_intervention(self) -> dict | None:
         with ui.dialog() as dialog, ui.card().classes('w-96'):
             ui.label("Détail de l'intervention").classes('text-lg font-bold')
 
             speaker = ui.input("Nom de l'intervenant",
-                            validation={'Champ obligatoire': _required}).classes('w-full')
+                            validation={'Champ obligatoire': _required}, value=self.last_speaker).classes('w-full')
             title = ui.input("Titre de l'intervention",
-                            validation={'Champ obligatoire': _required}).classes('w-full')
+                            validation={'Champ obligatoire': _required}, value=self.last_title).classes('w-full')
 
             # date : saisie au clavier (JJ/MM/AAAA) ou choix dans un calendrier
             with ui.input("Date de l'intervention",
-                        validation={'Date invalide (JJ/MM/AAAA)': _valid_date}).classes('w-full') as date_input:
-                with ui.menu().props('no-parent-event') as menu:
+                        validation={'Date invalide (JJ/MM/AAAA)': _valid_date}, value=_to_display(self.last_intervention_date)).classes('w-full') as date_input:
+                with ui.dialog() as cal_dialog, ui.card():
                     with ui.date(mask='DD/MM/YYYY').bind_value(date_input):
                         with ui.row().classes('justify-end'):
-                            ui.button('Fermer', on_click=menu.close).props('flat')
+                            ui.button('Fermer', on_click=cal_dialog.close).props('flat')
                 with date_input.add_slot('append'):
-                    ui.icon('edit_calendar').on('click', menu.open).classes('cursor-pointer')
+                    ui.icon('edit_calendar').on('click', cal_dialog.open).classes('cursor-pointer')
 
             def validate():
                 # liste (et non générateur) : tous les champs sont validés, pour afficher toutes les erreurs
@@ -213,6 +294,9 @@ class Main:
                 ui.button('Valider', on_click=validate)
 
         result = await dialog
+        self.last_speaker = result['speaker']
+        self.last_title = result['title']
+        self.last_intervention_date = result['date']
         dialog.delete()   # évite d'accumuler des dialogues dans la page
         return result        
 
@@ -223,20 +307,42 @@ class Main:
         promotion = database_controller.promotion
         persons = promotion.participants + database_controller.animators
         information = database_controller.load_information()
-        pdf = FileLabelController(persons, intervention, information.file_tag, extra_identities=('INTERVENANT', 'ARCHIVE')).generate()
-        ui.download(pdf, f"dossier.pdf")
+        try:
+            pdf = FileLabelController(persons, intervention, information.file_tag, extra_identities=('INTERVENANT', 'ARCHIVE')).generate()
+            ui.download(pdf, f"dossier.pdf")
+        except ValueError as e:
+            ui.notify(str(e), type='warning')
 
     def _generate_badges(self):
+        try:
+            promotion = database_controller.promotion
+            tag = database_controller.load_information().badge_tag
+            pdf = BadgeController(
+                database_controller.promotion.participants, tag,
+                logo_path=os.getenv('BADGE_LOGO', 'assets/logo.png'),
+                font_path=os.getenv('BADGE_FONT', 'assets/comicbd.ttf'),
+            ).generate()
+            ui.download(pdf, f"badges_{promotion.year}_{promotion.year + 2}.pdf")
+        except ValueError as e:
+            ui.notify(str(e), type='warning')
+
+    def _export_excel(self):
         promotion = database_controller.promotion
-        tag = database_controller.load_information().badge_tag
-        pdf = BadgeController(
-            database_controller.promotion.participants, tag,
-            logo_path=os.getenv('BADGE_LOGO', 'assets/logo.png'),
-            font_path=os.getenv('BADGE_FONT', 'assets/comicbd.ttf'),
+        data = ExportExcelController(
+            promotion.participants,
+            database_controller.animators,
+            database_controller.addressees,
+            database_controller.senders,
         ).generate()
-        ui.download(pdf, f"badges_{promotion.year}_{promotion.year + 2}.pdf")
-    
+        ui.download(data, f'export_{promotion.year}-{promotion.year + 2}.xlsx')
+        
+    async def _quit(self):
+        ui.navigate.to('/bye')       # le navigateur charge la page d'au revoir
+        await asyncio.sleep(1)       # laisse le temps à la page de s'afficher
+        app.shutdown()               # puis arrête le serveur
+        os._exit(0)               
+
     def run(self):
-        ui.run(title='Ecole du diocèse')
+        ui.run(title='Ecole du diocèse', language='fr', reload=True, uvicorn_reload_excludes='logs/*,db/*,.venv/*')
 
 Main().run()    

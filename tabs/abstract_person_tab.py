@@ -34,10 +34,70 @@ class AbstractPersonsTab:
             }""",
         }, auto_size_columns=False).classes('w-full grow min-h-[200px]')
         self.grille.on('cellValueChanged', self._save)
-        with ui.row():
-            self._btn_add = ui.button(f"Ajouter {self._get_person_name()}", on_click=self._add_line, icon='person_add')
-            self._btn_import = ui.button("Importer un fichier excel", on_click=lambda: self._upload.run_method('pickFiles'), icon='upload_file')
-            self._btn_remove = ui.button('Supprimer la sélection', on_click=self._remove_selection, color='negative', icon='delete')
+        self.grille.on('modelUpdated', self._update_count, args=['type'])
+        self.grille.on('cellValueChanged', self._update_count, args=['type'])
+        self.grille.on('firstDataRendered', self._update_count)     
+        with ui.row().classes('w-full items-center justify-between no-wrap'):
+            with ui.row():
+                self._btn_add = ui.button(f"Ajouter {self._get_person_name()}", on_click=self._add_line, icon='person_add')
+                if os.getenv("SHOW_IMPORT").lower() == "yes":
+                    self._btn_import = ui.button("Importer un fichier excel", on_click=lambda: self._upload.run_method('pickFiles'), icon='upload_file')
+                self._btn_remove = ui.button('Supprimer la sélection', on_click=self._remove_selection, color='negative', icon='delete')
+            self._count_label = ui.label().classes('text-grey-7')
+        self._update_count_local()
+
+    def _editable_fields(self) -> list[str]:
+        return [c['field'] for c in self.grille.options['columnDefs']
+                if c.get('editable') and c.get('field')]
+
+    def _show_count(self, shown: int, total: int) -> None:
+        def lines(n: int) -> str:
+            return f"{n} ligne{'s' if n > 1 else ''}"
+        self._count_label.text = lines(total) if shown == total else f"{shown} / {lines(total)}"
+
+    def _update_count_local(self) -> None:
+        """Compte immédiat à partir des données connues côté serveur (sans filtre)."""
+        fields = self._editable_fields()
+        total = sum(1 for r in self.grille.options['rowData']
+                    if any(str(r.get(f) or '').strip() for f in fields))
+        self._show_count(total, total)
+        # le navigateur corrige ensuite, au cas où un filtre est actif
+        ui.timer(0.3, self._update_count, once=True)
+
+    async def _update_count(self, _=None) -> None:
+        try:
+            await self.grille.client.connected()       # attend que le navigateur soit prêt
+            shown, total = await self.grille.run_grid_method(self._count_js(), timeout=3)
+        except Exception as ex:
+            print(f'Compteur de lignes : {ex}')         # plus d'échec silencieux
+            return
+        self._show_count(shown, total)                  
+
+    def _count_script(self) -> str:
+        fields = json.dumps(self._editable_fields())
+        return f"""
+            const el = getElement({self.grille.id});
+            const api = el && (el.api || el.gridApi);
+            if (!api) return null;
+            const fields = {fields};
+            const filled = d => fields.some(k => (d[k] ?? '').toString().trim());
+            let total = 0, shown = 0;
+            api.forEachNode(n => {{ if (n.data && filled(n.data)) total++; }});
+            api.forEachNodeAfterFilter(n => {{ if (n.data && filled(n.data)) shown++; }});
+            return [shown, total];
+        """
+
+    async def _update_count(self, _=None) -> None:
+        try:
+            await self.grille.client.connected()       # attend que le navigateur soit prêt
+            result = await self.grille.client.run_javascript(self._count_script(), timeout=3)
+        except Exception as ex:
+            print(f'Compteur de lignes : {ex}')
+            return
+        if not result:                                  # grille pas encore initialisée
+            return
+        shown, total = result
+        self._show_count(shown, total)
 
     def _build_columns(self) -> list:
         columns = self._get_columns_def()

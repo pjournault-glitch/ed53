@@ -22,6 +22,8 @@ class MealController:
 
     def generate(self) -> bytes:
         """Renvoie le PDF (en octets) : une ligne par participant, une colonne par mois."""
+        if not self.participants:
+            raise ValueError("Aucun participant. Merci de renseigner d'abord les participants.")
         _, pages = self._build(total_pages=None)    # 1re passe : compte les pages
         pdf, _ = self._build(total_pages=pages)     # 2e passe : « Page n/total »
         return pdf

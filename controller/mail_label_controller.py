@@ -27,6 +27,8 @@ class MailLabelController:
         return [l for l in [identity, *street, town] if l]
 
     def generate(self) -> bytes:
+        if not self.persons:
+            raise ValueError("Aucun participant. Merci de renseigner d'abord les participants.")        
         tag = self.tag
         page_w, page_h = A4
         cell_w = (page_w - (tag.margin_left + tag.margin_right) * mm) / tag.nb_horizontal

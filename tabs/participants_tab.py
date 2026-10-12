@@ -1,13 +1,10 @@
-import asyncio
-from dataclasses import asdict, fields
+from dataclasses import fields
 import json
 import unicodedata
-import uuid
-from nicegui import run
 from nicegui import ui
 
 from controller.database_controller import database_controller
-from model.model import Participant, Sender
+from model.model import Participant
 from tabs.abstract_person_tab import AbstractPersonsTab
 
 SENDER_SETTER = """params => {
@@ -24,13 +21,20 @@ class ParticipantsTab(AbstractPersonsTab):
     def __init__(self):
         database_controller.subscribe_promotion_changed(self.reload)
         database_controller.subscribe_senders_changed(self.reload)
-        self._filter_sender = ui.select(
-            options=self._sender_choices(),
-            label='Filtrer par envoyant',
-            clearable=True,
-            on_change=self._apply_sender_filter,
-        ).classes('w-128')        
+        with ui.row().classes('w-full items-center justify-between no-wrap'):
+            self._filter_sender = ui.select(
+                options=self._sender_choices(),
+                label='Filtrer par envoyant',
+                clearable=True,
+                on_change=self._apply_sender_filter,
+            ).classes('w-128')
+            self._promotion_label = ui.label(self._promotion_text()).classes('text-subtitle1 text-bold')            
         super().__init__()
+
+    @staticmethod
+    def _promotion_text() -> str:
+        year = database_controller.promotion_year
+        return f'Promotion ({year}-{year + 2})' if year else ''        
 
     def _get_empty_line(self):
         return {
@@ -96,6 +100,7 @@ class ParticipantsTab(AbstractPersonsTab):
         self.grille.options['rowData'] = self._grid_lines(
             database_controller.promotion.participants
         )
+        self._promotion_label.text = self._promotion_text()
         self.grille.update()
 
     def filter_by_sender(self, label: str):

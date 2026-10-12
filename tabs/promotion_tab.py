@@ -55,7 +55,7 @@ class PromotionTab:
                     ui.badge('en cours', color='positive')
                 else:
                     ui.label(f"Promotion : {promotion}").classes('text-h5')
-                    ui.badge('consultation', color='warning')
+                    ui.badge('précédente', color='warning')
                     ui.button('Revenir à la dernière promotion', icon='undo',
                             on_click=lambda: self._select_promotion(database_controller.get_latest_promotion())).props('flat')
             fee = f'{promotion.year_fee:.2f}'.replace('.', ',')
