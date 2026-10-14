@@ -21,6 +21,7 @@ class ParticipantsTab(AbstractPersonsTab):
     def __init__(self):
         database_controller.subscribe_promotion_changed(self.reload)
         database_controller.subscribe_senders_changed(self.reload)
+
         with ui.row().classes('w-full items-center justify-between no-wrap'):
             self._filter_sender = ui.select(
                 options=self._sender_choices(),
@@ -67,8 +68,18 @@ class ParticipantsTab(AbstractPersonsTab):
                  ':valueSetter': SENDER_SETTER, 'filter': 'agTextColumnFilter','cellClassRules': self._sender_class_rules()},
             ]
 
+
+    def _insert(self, line: dict) -> int:
+        return database_controller.add_participant(database_controller.promotion, line)
+
+    def _update(self, line: dict):
+        database_controller.update_participant(line)
+
+    def _delete(self, ids: set[int]):
+        database_controller.delete_participants(ids)  
+
     def _get_row_data(self):
-        return self._grid_lines(database_controller.promotion.participants if database_controller.promotion else [])
+        return self._grid_lines(database_controller.get_participants(database_controller.promotion) if database_controller.promotion else [])
 
     def _get_required_fields(self) -> set[str]:
         return {'firstname', 'name', 'street', 'zip', 'city', 'phone'}    
@@ -97,9 +108,7 @@ class ParticipantsTab(AbstractPersonsTab):
         self._filter_sender.set_options(choices)
         if self._filter_sender.value not in choices:
             self._filter_sender.value = None
-        self.grille.options['rowData'] = self._grid_lines(
-            database_controller.promotion.participants
-        )
+        self.grille.options['rowData'] = self._grid_lines(database_controller.get_participants(database_controller.promotion))
         self._promotion_label.text = self._promotion_text()
         self.grille.update()
 
@@ -111,15 +120,6 @@ class ParticipantsTab(AbstractPersonsTab):
             self._filter_sender.set_value(label)      # déclenche _apply_sender_filter
         else:
             self._filter_sender.set_value(None)       # libellé inconnu : pas de filtre
-
-    async def _save(self):
-        lines = await self.grille.get_client_data()
-        database_controller.promotion.participants = [
-            Participant(**{k: v for k, v in l.items() if k in self._get_fields()})
-            for l in lines
-            if any(str(l.get(c) or '').strip() for c in self._get_fields())
-        ]
-        database_controller.save_promotion(database_controller.promotion)
 
     async def _apply_sender_filter(self, e):
         model = ({'filterType': 'text', 'type': 'equals', 'filter': e.value}

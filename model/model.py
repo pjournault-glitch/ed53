@@ -116,6 +116,7 @@ class Participant:
     phone: str
     mail: str
     sender_label: str | None = None
+    id: int | None = None    
 
 @dataclass
 class Promotion:

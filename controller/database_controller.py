@@ -8,12 +8,13 @@ from pathlib import Path
 from dotenv import load_dotenv
 from sqlalchemy import delete, func, select
 from controller.database import SessionLocal
-from model.model import Addressee, Animator, Information, Promotion, Sender
+from model.model import Addressee, Animator, Information, Participant, Promotion, Sender
 from model.database_model import DbInformation, DbPersonne, DbPromotion
 
 PERSON_FIELDS = {"sender": {"title", "firstname", "name", "street", "zip", "city", "phone", "mail", "organisation"},
                  "addressee": {"title", "firstname", "name", "street", "zip", "city", "phone", "mail"},
-                 "animator": {"title", "firstname", "name", "street", "zip", "city", "phone", "mail"}}
+                 "animator": {"title", "firstname", "name", "street", "zip", "city", "phone", "mail"},
+                 "participant": {"title", "firstname", "name", "street", "zip", "city", "phone", "mail", "sender_label"}}
 
 class DatabaseController:
     """Gestionnaire des données"""
@@ -24,6 +25,7 @@ class DatabaseController:
         self._on_addressees_changed = []
         self._on_promotion_changed = []
         self._on_animators_changed = []
+        self._on_participants_changed = []
         self._promotion = None
         self.promotion = self.load_promotion(self.get_latest_promotion())
 
@@ -54,6 +56,15 @@ class DatabaseController:
         for callback in self._on_animators_changed:
             callback()
 
+    """Permet de s'abonner aux changements de participants"""
+    def subscribe_participants_changed(self, callback) -> None:
+        self._on_participants_changed.append(callback)
+
+    """Notifie les abonnés aux changement de participants"""
+    def _notify_participants_changed(self) -> None:
+        for callback in self._on_participants_changed:
+            callback()
+
     """Renvoi la promotion en cours d'utilisation"""
     @property
     def promotion(self) -> Promotion:
@@ -64,6 +75,7 @@ class DatabaseController:
     def promotion(self, value:Promotion) -> None:
         self._promotion = value
         self._notify_promotion_changed()
+        self._notify_participants_changed()
 
     """Permet de s'abonner aux changements de promotion en cours"""
     def subscribe_promotion_changed(self, callback) -> None:
@@ -74,41 +86,7 @@ class DatabaseController:
         for callback in self._on_promotion_changed:
             callback()
 
-    @staticmethod
-    def _atomic_write(path: Path, content: str) -> None:
-        """Écrit dans un fichier temporaire puis remplace : jamais de fichier à moitié écrit."""
-        tmp = path.with_name(path.name + ".tmp")
-        tmp.write_text(content, encoding="utf-8")
-        os.replace(tmp, path)
-
-    def _write_json(self, path: Path, data, indent: int = 2) -> None:
-        """Enregistre les données au format JSON, puis archive une copie datée."""
-        content = json.dumps(data, ensure_ascii=False, indent=indent)
-        self._atomic_write(path, content)
-        self._archive(path, content)
-
-    def _archive(self, path: Path, content: str) -> None:
-        """Copie le contenu dans <db>/archive/<nom>_<AAAAMMJJ>.json (ex. animators_20261011.json)."""
-        try:
-            archive_dir = self.db_path / os.getenv("ARCHIVE")
-            archive_dir.mkdir(parents=True, exist_ok=True)
-            name = f"{path.stem}_{date.today():%Y%m%d}{path.suffix}"
-            self._atomic_write(archive_dir / name, content)
-        except OSError:
-            # un échec d'archivage ne doit jamais empêcher l'enregistrement principal
-            logger.exception("Archivage impossible pour %s", path.name)
-
     # Promotion ---------------------------------------------------------------------------------------------------------
-
-    """Renvoi les participants de la promotion en cours"""
-    def promotion_participants(self) -> list:
-        with SessionLocal() as session:
-            return session.scalars(
-                select(DbPersonne)
-                .where(DbPersonne.promotion_id == self.promotion_id,
-                    DbPersonne.type == "participant")
-                .order_by(DbPersonne.name, DbPersonne.firstname)
-            ).all()
 
     """Renvoi la liste des promotions existantes"""
     def existing_promotions(self) -> list[int]:
@@ -150,6 +128,39 @@ class DatabaseController:
                 .where(DbPromotion.year.in_([year, year - 1]))
                 .limit(1)
             ) is not None
+
+    # Participants ------------------------------------------------------------------------------------------------------------
+
+    """Renvoi les participants de la promotion donnée"""
+    def get_participants(self, promotion) -> list[Participant]:
+        with SessionLocal() as session:
+            db_participants = session.scalars(select(DbPersonne).where(DbPersonne.promotion_id == promotion.id, DbPersonne.type == "participant").order_by(DbPersonne.name, DbPersonne.firstname)).all()
+            return [
+                Participant(id=r.id, **{f: getattr(r, f) or "" for f in PERSON_FIELDS["participant"]})
+                for r in db_participants
+            ]  
+
+    """Ajoute un participant à la promotion donnée"""
+    def add_participant(self, promotion, data: dict) -> int:
+        with SessionLocal() as session:
+            p = DbPersonne(type="participant", promotion_id=promotion.id, **{k: v for k, v in data.items() if k in PERSON_FIELDS["participant"]})
+            session.add(p)
+            session.commit()
+            self._promotion = self.load_promotion(self.promotion.year)
+            self._notify_participants_changed()
+            return p.id
+
+    """Met à jour un participant"""
+    def update_participant(self, data: dict) -> None:
+        self._update_person("participant", data)
+        self._promotion = self.load_promotion(self.promotion.year)
+        self._notify_participants_changed()
+
+    """Supprime des participants"""
+    def delete_participants(self, ids: set[int]) -> None:
+        self._delete_persons(ids)
+        self._promotion = self.load_promotion(self.promotion.year)
+        self._notify_participants_changed()        
 
     # Personnes ------------------------------------------------------------------------------------------------------------
 

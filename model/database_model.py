@@ -23,14 +23,13 @@ class DbPersonne(Base):
     phone = Column(String(20), nullable=True)
     mail = Column(String(100), nullable=True)
     organisation = Column(String(100), nullable=True)
-    sender = Column(String(100), nullable=True)
+    sender_label = Column(String(100), nullable=True)
     promotion_id = Column(Integer, ForeignKey("promotions.id"), nullable=True)
 
     promotion = relationship("DbPromotion", back_populates="personnes")
 
     def to_participant(self):
-        #TODO Ajouter le sender label
-        return Participant(title=self.title, firstname=self.firstname, name=self.name, street=self.street, zip=self.zip, city=self.city, phone=self.phone, mail=self.mail)
+        return Participant(title=self.title, firstname=self.firstname, name=self.name, street=self.street, zip=self.zip, city=self.city, phone=self.phone, mail=self.mail, sender_label=self.sender_label)
 
 
 class DbPromotion(Base):
