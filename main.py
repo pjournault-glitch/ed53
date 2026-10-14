@@ -238,7 +238,7 @@ class Main:
         """Génère les factures"""
         promotion = database_controller.promotion
         controller = InvoiceController(
-            promotion.participants, database_controller.senders,
+            promotion.participants, database_controller.get_senders(),
             database_controller.load_information(),
             fee=promotion.year_fee,
             logo_path=os.getenv('INVOICE_LOGO', 'assets/logo.png'),
@@ -292,7 +292,7 @@ class Main:
         """Génère les étiquettes de courriers"""
         try:        
             promotion = database_controller.promotion
-            persons = sorted(promotion.participants + database_controller.addressees, key=lambda p: p.name)
+            persons = sorted(promotion.participants + database_controller.get_addressees(), key=lambda p: p.name)
             information = database_controller.load_information()
             pdf = MailLabelController(persons, information.mail_tag).generate()
             ui.download(pdf, f"courrier_{promotion.year}_{promotion.year + 2}.pdf")
@@ -305,7 +305,7 @@ class Main:
         if intervention is None:
             return
         promotion = database_controller.promotion
-        persons = promotion.participants + database_controller.animators
+        persons = promotion.participants + database_controller.get_animators()
         information = database_controller.load_information()
         try:
             pdf = FileLabelController(persons, intervention, information.file_tag, extra_identities=('INTERVENANT', 'ARCHIVE')).generate()
@@ -372,9 +372,9 @@ class Main:
         promotion = database_controller.promotion
         data = ExportExcelController(
             promotion.participants,
-            database_controller.animators,
-            database_controller.addressees,
-            database_controller.senders,
+            database_controller.get_animators(),
+            database_controller.get_addressees(),
+            database_controller.get_senders(),
         ).generate()
         ui.download(data, f'export_{promotion.year}-{promotion.year + 2}.xlsx')            
 
