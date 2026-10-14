@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+import json
 
 @dataclass
 class Tag:
@@ -9,9 +10,12 @@ class Tag:
     nb_horizontal: int 
     nb_vertical: int
 
+    def to_dict(self) -> dict:
+        return asdict(self)
+
     @classmethod
     def from_dict(cls, data: dict | None) -> 'Tag | None':
-        return cls(**data) if data else None    
+        return cls(**data) if data else None
 
 @dataclass
 class Information:
@@ -57,6 +61,7 @@ class Sender:
     phone: str
     mail: str
     organisation: str
+    id: int | None = None
 
     @property
     def label(self) -> str:

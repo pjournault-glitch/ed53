@@ -35,7 +35,7 @@ class AddresseesTab(AbstractPersonsTab):
             ]
 
     def _get_row_data(self):
-        return self._grid_lines(database_controller.addressees, 0)
+        return self._grid_lines(database_controller.addressees)
 
     def _get_required_fields(self) -> set[str]:
         return {'firstname', 'name', 'street', 'zip', 'city'}        

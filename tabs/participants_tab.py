@@ -68,7 +68,7 @@ class ParticipantsTab(AbstractPersonsTab):
             ]
 
     def _get_row_data(self):
-        return self._grid_lines(database_controller.promotion.participants, 0)
+        return self._grid_lines(database_controller.promotion.participants)
 
     def _get_required_fields(self) -> set[str]:
         return {'firstname', 'name', 'street', 'zip', 'city', 'phone'}    
@@ -86,7 +86,7 @@ class ParticipantsTab(AbstractPersonsTab):
         return {f.name for f in fields(Participant)}
 
     def _sender_choices(self) -> list[str]:
-        return sorted((s.label for s in database_controller.senders), key=_cle_tri)
+        return sorted((s.label for s in database_controller.get_senders()), key=_cle_tri)
 
     def reload(self):
         choices = self._sender_choices()

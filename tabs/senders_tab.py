@@ -49,11 +49,20 @@ class SendersTab(AbstractPersonsTab):
                  }"""},
             ]
 
+    def _insert(self, line: dict) -> int:
+        return database_controller.add_sender(line)
+
+    def _update(self, line: dict):
+        database_controller.update_sender(line)
+
+    def _delete(self, ids: set[int]):
+        database_controller.delete_senders(ids)    
+
     def _get_row_data(self):
-        lines = self._grid_lines(database_controller.senders, 0)
+        senders = database_controller.get_senders()
+        lines = self._grid_lines(senders)
         counts = self._participants_per_sender()
-        # _grid_lines garde l'ordre des envoyants : on peut les associer par position
-        for line, sender in zip(lines, database_controller.senders):
+        for line, sender in zip(lines, senders):
             line['nb_participants'] = counts.get(sender.label, 0)
         return lines
 
@@ -68,7 +77,6 @@ class SendersTab(AbstractPersonsTab):
 
         editable = [c['field'] for c in columns if c.get('editable') and c.get('field')]
         row_not_empty = f"{json.dumps(editable)}.some(f => {filled('f').replace(chr(39) + 'f' + chr(39), 'f')})"
-        # ligne non vide, sans organisation, et sans le couple nom + prénom
         invalid = (f"{row_not_empty} && !{filled('organisation')} "
                    f"&& !({filled('name')} && {filled('firstname')})")
 
@@ -94,15 +102,6 @@ class SendersTab(AbstractPersonsTab):
 
     def _get_fields(self):
         return {f.name for f in fields(Sender)}
-
-    async def _save(self):
-        lines = await self.grille.get_client_data()
-        database_controller.senders = [
-            Sender(**{k: v for k, v in l.items() if k in self._get_fields()})
-            for l in lines
-            if any(str(l.get(c) or '').strip() for c in self._get_fields())
-        ]
-        database_controller.save_senders()
 
     @staticmethod
     def _participants_per_sender() -> dict[str, int]:

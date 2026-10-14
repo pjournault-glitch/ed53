@@ -1,24 +1,15 @@
 import logging
 import os
-import sys
 from pathlib import Path
-import traceback
-
+import sys
 from util.logging import install_asyncio_handler, setup_logging
-
-BASE_DIR = Path(sys.executable).parent if getattr(sys, 'frozen', False) else Path(__file__).parent
-LOG_FILE = setup_logging(BASE_DIR / 'logs', getattr(logging, os.getenv('LOG_LEVEL', 'INFO').upper(), logging.INFO))
-
-from nicegui import Client, app, ui
+from util.util import required, to_display, valid_date
+from nicegui import app, ui
 from controller.database_controller import database_controller
-
 import asyncio
-from datetime import date, datetime
+from datetime import datetime
 from functools import partial
-import os
-
 from dotenv import load_dotenv
-from fastapi.responses import HTMLResponse
 from nicegui import app, ui
 
 from controller.badge_controller import BadgeController
@@ -37,55 +28,10 @@ from tabs.animators_tab import AnimatorsTab
 from controller.attendance_controller import AttendanceController
 from controller.mail_label_controller import MailLabelController
 
-BYE_HTML = """<!doctype html>
-<html lang="fr">
-<head>
-  <meta charset="utf-8">
-  <title>Application fermée</title>
-  <style>
-    body { font-family: sans-serif; display: flex; align-items: center; justify-content: center;
-           height: 100vh; margin: 0; background: #f5f5f5; color: #333; }
-    .box { text-align: center; }
-    h1 { font-weight: 500; }
-  </style>
-</head>
-<body>
-  <div class="box">
-    <h1>L'application est fermée</h1>
-    <p>Vous pouvez maintenant fermer cette page.</p>
-  </div>
-</body>
-</html>"""
-
-
-def _required(v) -> bool:
-    return bool(v and v.strip())
-
-def _valid_date(v) -> bool:
-    try:
-        datetime.strptime(v or '', '%d/%m/%Y')
-        return True
-    except ValueError:
-        return False
-
-def _to_display(value) -> str:
-    """Convertit une date (objet date, datetime ou texte ISO) en JJ/MM/AAAA."""
-    if isinstance(value, datetime):
-        value = value.date()
-    if isinstance(value, date):
-        return value.strftime('%d/%m/%Y')
-    if isinstance(value, str) and value:
-        try:
-            return date.fromisoformat(value).strftime('%d/%m/%Y')
-        except ValueError:
-            return value          # déjà au bon format, ou texte libre
-    return ''  
+BASE_DIR = Path(sys.executable).parent if getattr(sys, 'frozen', False) else Path(__file__).parent
+LOG_FILE = setup_logging(BASE_DIR / 'logs', getattr(logging, os.getenv('LOG_LEVEL', 'INFO').upper(), logging.INFO))
 
 logger = logging.getLogger('app')
-
-@app.get('/bye')
-def bye():
-    return HTMLResponse(BYE_HTML)
 
 @app.on_startup
 async def _on_startup():
@@ -101,15 +47,23 @@ def _on_exception(exception: Exception):
     except Exception:
         pass            # pas de contexte d'interface disponible : l'erreur est de toute façon dans le journal
 
-@app.on_disconnect
-async def arreter_si_plus_personne(client: Client):
-    await asyncio.sleep(3)  # délai de grâce
-    if not any(c.has_socket_connection for c in Client.instances.values()):
-        app.shutdown()
 
 class Main:
     def __init__(self):
         logger.info(f"PID={os.getpid()}")
+        load_dotenv(override=True)
+
+        self._build_header_and_css()        
+        self._build_drawer()
+        self._build_tabs()
+        self._build_tab_pages()
+        database_controller.subscribe_senders_changed(self._update_senders_badge)
+        self.last_speaker = None
+        self.last_title = None
+        self.last_intervention_date = None
+
+    def _build_header_and_css(self):
+        """Construit le header et les css HTML"""
         ui.query('.q-page').classes('flex')
         ui.query('.nicegui-content').classes('w-full')
         ui.add_css('.majuscules, .majuscules input { text-transform: uppercase; }')
@@ -118,29 +72,20 @@ class Main:
                     .body--dark .champ-calcule { color: rgba(255, 255, 255, .7); }
                     ''')
         ui.add_head_html("""
-        <script>
-        window.addEventListener('error', e => emitEvent('js_error',
-            {message: e.message, source: e.filename, line: e.lineno}));
-        window.addEventListener('unhandledrejection', e => emitEvent('js_error',
-            {message: String(e.reason), source: 'promise', line: 0}));
-        </script>""", shared=True)
-
+                            <script>
+                            window.addEventListener('error', e => emitEvent('js_error',
+                                {message: e.message, source: e.filename, line: e.lineno}));
+                            window.addEventListener('unhandledrejection', e => emitEvent('js_error',
+                                {message: String(e.reason), source: 'promise', line: 0}));
+                            </script>""", shared=True)
         ui.on('js_error', lambda e: logger.error('Erreur JavaScript : %s', e.args))
-        
-        load_dotenv(override=True)
-        self._build_drawer()
-        self._build_tabs()
-        self._build_tab_pages()
-        self.last_speaker = None
-        self.last_title = None
-        self.last_intervention_date = None
 
     def _build_drawer(self) -> None:
+        """Construit le volet de gauche avec les différentes impressions/extractions à générer"""
         groups = [
             self._menu_items_group1(),
             self._menu_items_group2(),
             self._menu_items_group3(),
-            [('sym_o_power_settings_new', 'Quitter', self._quit)],
         ]
         with ui.left_drawer().classes('bg-blue-100') as self.left_drawer:
             with ui.column().classes('w-full h-full no-wrap gap-0'):
@@ -152,7 +97,7 @@ class Main:
                             self._add_menu_item(icon, label, handler)
 
     def _menu_items_group1(self) -> list[tuple]:
-        """Entrées du menu : (icône, libellé, action)."""
+        """Entrées du groupe 1 du menu : (icône, libellé, action)."""
         per_year = [
             ('sym_o_signature', "Emargement", self._generate_attendance),
             ('sym_o_room_service', "Règlement repas", self._generate_meal),
@@ -165,7 +110,7 @@ class Main:
         ]
 
     def _menu_items_group2(self) -> list[tuple]:
-        """Entrées du menu : (icône, libellé, action)."""
+        """Entrées du groupe 2 du menu: (icône, libellé, action)."""
         return [
             ('sym_o_mail', 'Etiquettes courriers', self._generate_mails),
             ('sym_o_files', 'Etiquettes dossiers', self._generate_files),
@@ -173,16 +118,25 @@ class Main:
         ]
 
     def _menu_items_group3(self) -> list[tuple]:
-        """Entrées du menu : (icône, libellé, action)."""
+        """Entrées du groupe 3 du menu : (icône, libellé, action)."""
         return [
             ('sym_o_table_view', 'Export excel', self._export_excel),
         ]
 
+    def _add_menu_item(self, icon_name, label, fonction):
+        """Ajoute un item de menu dans le panneau de gauche"""
+        with ui.item(on_click=fonction):
+            with ui.item_section().props('avatar'):
+                ui.icon(icon_name)
+            with ui.item_section():
+                ui.item_label(label)
+
     def _build_tabs(self):
+        """Construction des onglets"""
         with ui.header().classes(replace='row items-center') as header:
             ui.button(on_click=lambda: self.left_drawer.toggle(), icon='menu').props('flat color=white')
             etat = {'titre': 'Promotion'}
-            with ui.tabs(on_change=self._on_tab_change).props('inline-label') as self.tabs:
+            with ui.tabs().props('inline-label') as self.tabs:
                 with ui.tab(name='promo', label=''):
                     ui.label().bind_text_from(database_controller, 'promotion_year', backward=lambda y: f'Promotion ({y} - {y+2})' if y else 'Promotion').style('font-size: 16px !important')
                 with ui.tab('participants') as self._tab_participants:
@@ -195,44 +149,40 @@ class Main:
                     ui.badge(color='grey', text_color='white').classes('ml-2').props('rounded').bind_text_from(database_controller, 'addressees',
                         backward=lambda addressees: str(len(addressees)))
                 with ui.tab('senders', label='Envoyants').style('font-size: 18px !important') as self._tab_senders:
-                    ui.badge(color='grey', text_color='white').classes('ml-2').props('rounded').bind_text_from(database_controller, 'senders',
-                        backward=lambda senders: str(len(senders)))
+                    self._senders_badge = ui.badge(color='grey', text_color='white').classes('ml-2').props('rounded')
                 ui.tab('info', label='Configuration', icon='settings').style('font-size: 18px !important')
                 ui.tab('apropos', label='A PROPOS', icon='info').style('font-size: 18px !important')
+            self._update_senders_badge()
+
+    def _update_senders_badge(self):
+        """Mise à jour du nombre d'envoyants dans le badge de l'onglet envoyants"""
+        self._senders_badge.text = str(len(database_controller.get_senders()))
 
     def _show_participants(self, label: str):
-        self.tabs.set_value(self._tab_participants)            # bascule sur l'onglet
-        self._participants_tab.filter_by_sender(label)    # applique le filtre
-
-    def _on_tab_change(self, e):
-        if e.value == self._tab_senders:                  # recalcule les compteurs au retour
-            asyncio.create_task(self._senders_tab.refresh_counts())
+        """Basculer vers l'onglet des participants (à partir de l'onglet des envoyants) en filtrant sur l'envoyant"""
+        self.tabs.set_value(self._tab_participants)
+        self._participants_tab.filter_by_sender(label)
 
     def _build_tab_pages(self):
+        """Construit les pages des onglets"""
         with ui.tab_panels(self.tabs, value='promo').classes('w-full grow'):
             with ui.tab_panel('promo'):
                 PromotionTab()
-            with ui.tab_panel('info'):
-                InformationTab()
             with ui.tab_panel('participants').classes('flex flex-col min-h-0'):
                 self._participants_tab = ParticipantsTab()
             with ui.tab_panel('animators').classes('flex flex-col min-h-0'):
                 AnimatorsTab()                
             with ui.tab_panel('addressees').classes('flex flex-col min-h-0'):
-                AddresseesTab()                
+                AddresseesTab()
             with ui.tab_panel('senders').classes('flex flex-col min-h-0'):
                 self._senders_tab = SendersTab(on_show_participants=self._show_participants)                
+            with ui.tab_panel('info'):
+                InformationTab()
             with ui.tab_panel('apropos'):
                 AboutTab()                
 
-    def _add_menu_item(self, icon_name, label, fonction):
-        with ui.item(on_click=fonction):
-            with ui.item_section().props('avatar'):
-                ui.icon(icon_name)
-            with ui.item_section():
-                ui.item_label(label)
-
     def _generate_attendance(self, year):
+        """Génère les feuilles d'émargement"""
         promotion = database_controller.promotion
         information = database_controller.load_information()
         try:
@@ -244,6 +194,7 @@ class Main:
             ui.notify(str(e), type='warning')
 
     def _generate_meal(self, year):
+        """Génère les feuilles de paiement des repas"""
         try:
             promotion = database_controller.promotion
             information = database_controller.load_information()
@@ -254,6 +205,7 @@ class Main:
             ui.notify(str(e), type='warning')
 
     async def _generate_invoices(self, year):
+        """Génère les factures"""
         promotion = database_controller.promotion
         controller = InvoiceController(
             promotion.participants, database_controller.senders,
@@ -274,6 +226,7 @@ class Main:
         ui.download(pdf, 'factures.pdf')
 
     async def _show_invoice_problems(self, controller):
+        """Affiche un problème lors de la génération des factures"""
         def name(p) -> str:
             return ' '.join(x.strip() for x in (p.firstname, p.name) if x and x.strip())
 
@@ -306,6 +259,7 @@ class Main:
         dialog.delete()        
         
     def _generate_mails(self):
+        """Génère les étiquettes de courriers"""
         try:        
             promotion = database_controller.promotion
             persons = sorted(promotion.participants + database_controller.addressees, key=lambda p: p.name)
@@ -315,18 +269,33 @@ class Main:
         except ValueError as e:
             ui.notify(str(e), type='warning')
 
-    async def ask_intervention(self) -> dict | None:
+    async def _generate_files(self):
+        """Génère les étiquettes des dossiers pour une intervention donnée"""
+        intervention = await self._ask_intervention()
+        if intervention is None:
+            return
+        promotion = database_controller.promotion
+        persons = promotion.participants + database_controller.animators
+        information = database_controller.load_information()
+        try:
+            pdf = FileLabelController(persons, intervention, information.file_tag, extra_identities=('INTERVENANT', 'ARCHIVE')).generate()
+            ui.download(pdf, f"dossier.pdf")
+        except ValueError as e:
+            ui.notify(str(e), type='warning')
+
+    async def _ask_intervention(self) -> dict | None:
+        """Demande les informations de l'intervention"""
         with ui.dialog() as dialog, ui.card().classes('w-96'):
             ui.label("Détail de l'intervention").classes('text-lg font-bold')
 
             speaker = ui.input("Nom de l'intervenant",
-                            validation={'Champ obligatoire': _required}, value=self.last_speaker).classes('w-full')
+                            validation={'Champ obligatoire': required}, value=self.last_speaker).classes('w-full')
             title = ui.input("Titre de l'intervention",
-                            validation={'Champ obligatoire': _required}, value=self.last_title).classes('w-full')
+                            validation={'Champ obligatoire': required}, value=self.last_title).classes('w-full')
 
             # date : saisie au clavier (JJ/MM/AAAA) ou choix dans un calendrier
             with ui.input("Date de l'intervention",
-                        validation={'Date invalide (JJ/MM/AAAA)': _valid_date}, value=_to_display(self.last_intervention_date)).classes('w-full') as date_input:
+                        validation={'Date invalide (JJ/MM/AAAA)': valid_date}, value=to_display(self.last_intervention_date)).classes('w-full') as date_input:
                 with ui.dialog() as cal_dialog, ui.card():
                     with ui.date(mask='DD/MM/YYYY').bind_value(date_input):
                         with ui.row().classes('justify-end'):
@@ -354,20 +323,8 @@ class Main:
         dialog.delete()   # évite d'accumuler des dialogues dans la page
         return result        
 
-    async def _generate_files(self):
-        intervention = await self.ask_intervention()
-        if intervention is None:
-            return
-        promotion = database_controller.promotion
-        persons = promotion.participants + database_controller.animators
-        information = database_controller.load_information()
-        try:
-            pdf = FileLabelController(persons, intervention, information.file_tag, extra_identities=('INTERVENANT', 'ARCHIVE')).generate()
-            ui.download(pdf, f"dossier.pdf")
-        except ValueError as e:
-            ui.notify(str(e), type='warning')
-
     def _generate_badges(self):
+        """Génère les badges"""
         try:
             promotion = database_controller.promotion
             tag = database_controller.load_information().badge_tag
@@ -381,6 +338,7 @@ class Main:
             ui.notify(str(e), type='warning')
 
     def _export_excel(self):
+        """Export les données au format excel"""
         promotion = database_controller.promotion
         data = ExportExcelController(
             promotion.participants,
@@ -388,15 +346,10 @@ class Main:
             database_controller.addressees,
             database_controller.senders,
         ).generate()
-        ui.download(data, f'export_{promotion.year}-{promotion.year + 2}.xlsx')
-        
-    async def _quit(self):
-        ui.navigate.to('/bye')       # le navigateur charge la page d'au revoir
-        await asyncio.sleep(1)       # laisse le temps à la page de s'afficher
-        app.shutdown()               # puis arrête le serveur
-        os._exit(0)               
+        ui.download(data, f'export_{promotion.year}-{promotion.year + 2}.xlsx')            
 
     def run(self):
+        """Exécute le programme"""
         ui.run(title='Ecole du diocèse', reload=False, language='fr', uvicorn_reload_excludes='logs/*,db/*,.venv/*')
 
 if __name__ == '__main__':

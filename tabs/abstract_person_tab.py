@@ -21,7 +21,7 @@ class AbstractPersonsTab:
             'columnDefs': self._build_columns(),
             'rowData': self._get_row_data(),
             "localeText": {"noRowsToShow": self._get_no_row_text()},
-            ':getRowId': 'params => params.data.id',
+            ':getRowId': 'params => String(params.data.id)',
             'stopEditingWhenCellsLoseFocus': True,
             'singleClickEdit': True,
             ':onCellValueChanged': 'params => params.api.refreshCells({rowNodes: [params.node], force: true})',
@@ -111,6 +111,15 @@ class AbstractPersonsTab:
             if col.get('field') in required:
                 col['cellClassRules'] = {**col.get('cellClassRules', {}), 'bg-red-300': rule}
         return columns
+
+    def _insert(self, line: dict) -> int:
+        raise NotImplementedError("La méthode _insert doit être implémentée dans la classe fille")   
+
+    def _update(self, line: dict):
+        raise NotImplementedError("La méthode _update doit être implémentée dans la classe fille")   
+
+    def _delete(self, ids: set[int]):
+        raise NotImplementedError("La méthode _delete doit être implémentée dans la classe fille")   
     
     def _get_required_fields(self) -> set[str]:
         raise NotImplementedError("La méthode _get_required_fields doit être implémentée dans la classe fille")   
@@ -136,9 +145,6 @@ class AbstractPersonsTab:
     def _get_fields(self):
         raise NotImplementedError("La méthode _get_fields doit être implémentée dans la classe fille")
 
-    def _new_ligne(self) -> dict:
-        return {**self._get_empty_line(), 'id': uuid.uuid4().hex}
-
     def _get_import_mapping(self) -> dict[str, str]:
         return dict(item.split(":", 1) for item in os.getenv("IMPORT_MAPPING").split(","))
 
@@ -150,7 +156,7 @@ class AbstractPersonsTab:
         ui.timer(0.2, lambda: self.grille.run_grid_method('autoSizeAllColumns'), once=True)            
 
     async def _handle_upload(self, e):
-        self._set_buttons_enabled(False) 
+        self._set_buttons_enabled(False)
         try:
             data = await e.file.read() if hasattr(e, 'file') else e.content.read()
             lines, ignored = await run.io_bound(self._parse_excel, data)
@@ -159,17 +165,21 @@ class AbstractPersonsTab:
                 ui.notify("Aucune ligne importée : en-têtes non reconnus ou fichier vide", type='warning')
                 return
 
-            current = await self.grille.get_client_data()
-            kept = [l for l in current if any(str(v).strip() for k, v in l.items() if k != 'id' and v is not None)]
-            self.grille.options['rowData'] = kept + lines
-            self.grille.update()
+            # Insertion en base : chaque ligne reçoit l'id généré par la base
+            def insert_all():
+                for line in lines:
+                    line['id'] = self._insert(line)
+
+            await run.io_bound(insert_all)
+
+            # Ajout des nouvelles lignes à la grille, sans toucher aux existantes
+            self.grille.run_grid_method('applyTransaction', {'add': lines})
             await self.grille.run_grid_method('autoSizeAllColumns')
-            await self._save()
 
             msg = f"{len(lines)} ligne(s) importée(s)"
             if ignored:
                 msg += f" (colonnes ignorées : {', '.join(ignored)})"
-            ui.notify(msg, type='positive')    
+            ui.notify(msg, type='positive')
         except Exception as ex:
             ui.notify(f"Erreur à l'import : {ex}", type='negative')
         finally:
@@ -201,16 +211,22 @@ class AbstractPersonsTab:
                 if i < len(row) and row[i] is not None:
                     line[field] = str(row[i]).strip()
             if any(line.get(f) for f in col_to_field.values()):  # saute les lignes vides
-                lines.append({**line, 'id': uuid.uuid4().hex})
+                lines.append(line)
         return lines, ignored
 
-    def _grid_lines(self, persons, nb_vides: int = 10) -> list[dict]:
-        lines = [{**asdict(p), 'id': uuid.uuid4().hex} for p in (persons or [])]
-        lines += [self._new_ligne() for _ in range(nb_vides)]
-        return lines
+    def _grid_lines(self, persons) -> list[dict]:
+        lines = []
+        for p in (persons or []):
+            line = asdict(p)
+            if line.get('id') is None:
+                line['id'] = f"tmp-{uuid.uuid4().hex}"
+            lines.append(line)
+        return lines     
 
     async def _add_line(self):
-        self.grille.run_grid_method('applyTransaction', {'add': [self._new_ligne()]})
+        line = {**self._get_empty_line()}
+        line['id'] = self._insert(line)               # id fourni par la base
+        self.grille.run_grid_method('applyTransaction', {'add': [line]})
 
     @staticmethod
     def _label(row: dict) -> str:
@@ -242,11 +258,12 @@ class AbstractPersonsTab:
             return
 
         ids = {r['id'] for r in selection}
+        self._delete(ids)
         lines = await self.grille.get_client_data()
         self.grille.options['rowData'] = [l for l in lines if l['id'] not in ids]
         self.grille.update()
-        await self._save()
         ui.notify(f'{len(selection)} ligne(s) supprimée(s)')
 
-    async def _save(self):
-        raise NotImplementedError("La méthode _save doit être implémentée dans la classe fille")   
+    async def _save(self, e):
+        line = e.args['data']                         # contient l'id de la base
+        await run.io_bound(self._update, line)

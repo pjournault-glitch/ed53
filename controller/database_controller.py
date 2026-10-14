@@ -5,10 +5,13 @@ import json
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+from sqlalchemy import delete, select
+from controller.database import SessionLocal
 from model.model import Addressee, Animator, Information, Promotion, Sender
+from model.database_model import DbInformation, DbPersonne
 
-INFORMATION_FILE = "information.json"
-SENDERS_FILE = "senders.json"
+PERSON_FIELDS = {"title", "firstname", "name", "street", "zip", "city", "phone", "mail", "organisation"}
+
 ANIMATORS_FILE = "animators.json"
 ADDRESSEE_FILE = "addressees.json"
 
@@ -17,12 +20,11 @@ class DatabaseController:
     def __init__(self) -> None:
         load_dotenv()
         self.db_path = Path(os.getenv("DATABASE", "db"))
+        self._on_senders_changed = []
         self._on_promotion_changed = []
+
         self._promotion = None
         self.promotion = self.load_promotion(self.get_latest_promotion())
-        self._on_senders_changed = []
-        self._senders = []
-        self.senders = self.load_senders()
         self._on_animators_changed = []
         self._animators = []
         self.animators = self.load_animators()
@@ -42,25 +44,18 @@ class DatabaseController:
         for callback in self._on_promotion_changed:
             callback()
 
-    """Permet de s'abonner aux changements de promotion en cours"""
-    def subscribe_promotion_changed(self, callback) -> None:
-        self._on_promotion_changed.append(callback)
+    """Permet de s'abonner aux changements d'envoyants"""
+    def subscribe_senders_changed(self, callback) -> None:
+        self._on_senders_changed.append(callback)
 
-    """Renvoi la liste des envoyants en cours d'utilisation"""
-    @property
-    def senders(self) -> list[Sender]:
-        return self._senders
-
-    """Définit la liste des envoyants en cours et notifie les abonnés à ce changement"""
-    @senders.setter
-    def senders(self, value: list[Sender]) -> None:
-        self._senders = value
+    """Notifie les abonnés aux changement d'envoyant"""
+    def _notify_senders_changed(self) -> None:
         for callback in self._on_senders_changed:
             callback()
 
-    """Permet de s'abonner aux changements dans les envoyants en cours"""
-    def subscribe_senders_changed(self, callback) -> None:
-        self._on_senders_changed.append(callback)        
+    """Permet de s'abonner aux changements de promotion en cours"""
+    def subscribe_promotion_changed(self, callback) -> None:
+        self._on_promotion_changed.append(callback)
 
     """Renvoi la liste des animateurs en cours d'utilisation"""
     @property
@@ -150,27 +145,41 @@ class DatabaseController:
     def promotion_exists(self, year:int) -> bool:
         return year in self.existing_promotions() or (year - 1) in self.existing_promotions()
 
-    """Charge les informations générales"""
-    def load_information(self) -> Information:
-        name = Path(self.db_path) / INFORMATION_FILE
-        with open(name, encoding='utf-8') as f:
-            return Information.from_dict(json.load(f))
-
     """Charge les envoyants"""
-    def load_senders(self) -> dict[str, Sender]:
-        path = Path(self.db_path) / SENDERS_FILE
-        if not path.exists():
-            return []
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return [Sender(**s) for s in data]      
+    def get_senders(self) -> list[Sender]:
+        with SessionLocal() as session:
+            rows = session.scalars(select(DbPersonne).where(DbPersonne.type == "sender").order_by(DbPersonne.id)).all()
+            return [
+                Sender(id=r.id, **{f: getattr(r, f) or "" for f in PERSON_FIELDS})
+                for r in rows
+            ]            
 
-    """Renvoie tous les envoyants"""
-    def get_all_senders(self) -> list[Sender]:
-        return sorted(self.senders, key=lambda s: s.label.lower())
+    """Ajoute un envoyant"""
+    def add_sender(self, data: dict) -> int:
+        with SessionLocal() as session:
+            p = DbPersonne(type="sender", **{k: v for k, v in data.items() if k in PERSON_FIELDS})
+            session.add(p)
+            session.commit()
+            self._notify_senders_changed()
+            return p.id            # disponible après le commit
 
-    """Renvoie un envoyant par son id"""
-    def get_sender(self, sender_id: str | None) -> Sender | None:
-        return next((o for o in self.senders if o.id == sender_id), None)
+    """Met à jour un envoyant"""
+    def update_sender(self, data: dict) -> None:
+        with SessionLocal() as session:
+            p = session.get(DbPersonne, data["id"])
+            if p:
+                for k, v in data.items():
+                    if k in PERSON_FIELDS:
+                        setattr(p, k, v)
+                session.commit()
+                self._notify_senders_changed()
+
+    """Supprime un envoyant"""
+    def delete_senders(self, ids: set[int]) -> None:
+        with SessionLocal() as session:
+            session.execute(delete(DbPersonne).where(DbPersonne.id.in_(ids)))
+            session.commit()
+            self._notify_senders_changed()
 
     """Charge les animateurs"""
     def load_animators(self) -> dict[str, Animator]:
@@ -192,13 +201,23 @@ class DatabaseController:
     def save_promotion(self, promotion: Promotion) -> None:
         self._write_json(self.db_path / f"promotion_{promotion.year}.json", asdict(promotion), indent=4)
 
+    """Charge les informations générales"""
+    def load_information(self) -> Information:
+        with SessionLocal() as session:
+            db_information = session.query(DbInformation).first()
+            return db_information.to_entity()
+
     """Enregistre les informations générales"""
     def save_information(self, information: Information) -> None:
-        self._write_json(self.db_path / INFORMATION_FILE, asdict(information), indent=4)
-
-    """Enregistre les envoyants"""
-    def save_senders(self) -> None:
-        self._write_json(self.db_path / SENDERS_FILE, [asdict(s) for s in self.senders])
+        with SessionLocal() as session:
+            db_information = session.query(DbInformation).first()
+            if db_information:
+                db_information.from_entity(information)                
+            else:
+                db_information = DbInformation()
+                db_information.from_entity(information)
+                session.add(db_information)
+            session.commit()
 
     """Enregistre les animateurs"""
     def save_animators(self) -> None:

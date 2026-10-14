@@ -35,7 +35,7 @@ class AnimatorsTab(AbstractPersonsTab):
             ]
 
     def _get_row_data(self):
-        return self._grid_lines(database_controller.animators, 0)
+        return self._grid_lines(database_controller.animators)
 
     def _get_required_fields(self) -> set[str]:
         return {'firstname', 'name', 'street', 'zip', 'city', 'phone'}        
