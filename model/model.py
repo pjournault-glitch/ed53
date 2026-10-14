@@ -83,6 +83,7 @@ class Animator:
     city: str
     phone: str
     mail: str
+    id: int | None = None
 
     @property
     def label(self) -> str:
@@ -98,6 +99,7 @@ class Addressee:
     city: str
     phone: str
     mail: str
+    id: int | None = None
 
     @property
     def label(self) -> str:

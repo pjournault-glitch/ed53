@@ -6,7 +6,6 @@ from util.logging import install_asyncio_handler, setup_logging
 from util.util import required, to_display, valid_date
 from nicegui import app, ui
 from controller.database_controller import database_controller
-import asyncio
 from datetime import datetime
 from functools import partial
 from dotenv import load_dotenv
@@ -57,7 +56,7 @@ class Main:
         self._build_drawer()
         self._build_tabs()
         self._build_tab_pages()
-        database_controller.subscribe_senders_changed(self._update_senders_badge)
+        self._subscribe_changes()
         self.last_speaker = None
         self.last_title = None
         self.last_intervention_date = None
@@ -143,20 +142,33 @@ class Main:
                     ui.badge(color='grey', text_color='white').classes('ml-2').props('rounded').bind_text_from(database_controller, 'promotion_participants',
                         backward=lambda participants: str(len(participants)))
                 with ui.tab('animators', label='Animateurs').style('font-size: 18px !important'):
-                    ui.badge(color='grey', text_color='white').classes('ml-2').props('rounded').bind_text_from(database_controller, 'animators',
-                        backward=lambda animators: str(len(animators)))
+                    self._animators_badge = ui.badge(color='grey', text_color='white').classes('ml-2')
                 with ui.tab('addressees', label='Destinataires').style('font-size: 18px !important'):
-                    ui.badge(color='grey', text_color='white').classes('ml-2').props('rounded').bind_text_from(database_controller, 'addressees',
-                        backward=lambda addressees: str(len(addressees)))
+                    self._addressees_badge = ui.badge(color='grey', text_color='white').classes('ml-2').props('rounded')
                 with ui.tab('senders', label='Envoyants').style('font-size: 18px !important') as self._tab_senders:
                     self._senders_badge = ui.badge(color='grey', text_color='white').classes('ml-2').props('rounded')
                 ui.tab('info', label='Configuration', icon='settings').style('font-size: 18px !important')
                 ui.tab('apropos', label='A PROPOS', icon='info').style('font-size: 18px !important')
             self._update_senders_badge()
+            self._update_addressees_badge()
+
+    def _subscribe_changes(self):
+        """Inscriptions aux changements"""
+        database_controller.subscribe_senders_changed(self._update_senders_badge)
+        database_controller.subscribe_addressees_changed(self._update_addressees_badge)
+        database_controller.subscribe_animators_changed(self._update_animators_badge)
 
     def _update_senders_badge(self):
         """Mise à jour du nombre d'envoyants dans le badge de l'onglet envoyants"""
         self._senders_badge.text = str(len(database_controller.get_senders()))
+
+    def _update_addressees_badge(self):
+        """Mise à jour du nombre de destinataires dans le badge de l'onglet destinataires"""
+        self._addressees_badge.text = str(len(database_controller.get_addressees()))
+
+    def _update_animators_badge(self):
+        """Mise à jour du nombre d'animateurs dans le badge de l'onglet animateurs"""
+        self._animators_badge.text = str(len(database_controller.get_animators()))
 
     def _show_participants(self, label: str):
         """Basculer vers l'onglet des participants (à partir de l'onglet des envoyants) en filtrant sur l'envoyant"""
@@ -350,7 +362,6 @@ class Main:
 
     def run(self):
         """Exécute le programme"""
-        ui.run(title='Ecole du diocèse', reload=False, language='fr', uvicorn_reload_excludes='logs/*,db/*,.venv/*')
+        ui.run(title='Ecole du diocèse', reload=True, language='fr', uvicorn_reload_excludes='logs/*,db/*,.venv/*')
 
-if __name__ == '__main__':
-    Main().run()
+Main().run()

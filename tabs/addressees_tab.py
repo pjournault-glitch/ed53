@@ -34,8 +34,17 @@ class AddresseesTab(AbstractPersonsTab):
                 {'headerName': 'Mèl', 'width': 250, 'field': 'mail', 'editable': True, 'cellClassRules': {'bg-red-200': r'x && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x)'}},
             ]
 
+    def _insert(self, line: dict) -> int:
+        return database_controller.add_addressee(line)
+
+    def _update(self, line: dict):
+        database_controller.update_addressee(line)
+
+    def _delete(self, ids: set[int]):
+        database_controller.delete_addressees(ids)      
+
     def _get_row_data(self):
-        return self._grid_lines(database_controller.addressees)
+        return self._grid_lines(database_controller.get_addressees())
 
     def _get_required_fields(self) -> set[str]:
         return {'firstname', 'name', 'street', 'zip', 'city'}        
@@ -51,12 +60,3 @@ class AddresseesTab(AbstractPersonsTab):
 
     def _get_fields(self):
         return {f.name for f in fields(Addressee)}
-
-    async def _save(self):
-        lines = await self.grille.get_client_data()
-        database_controller.addressees = [
-            Addressee(**{k: v for k, v in l.items() if k in self._get_fields()})
-            for l in lines
-            if any(str(l.get(c) or '').strip() for c in self._get_fields())
-        ]
-        database_controller.save_addressees()

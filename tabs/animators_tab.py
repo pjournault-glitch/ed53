@@ -34,8 +34,17 @@ class AnimatorsTab(AbstractPersonsTab):
                 {'headerName': 'Mèl', 'width': 250, 'field': 'mail', 'editable': True, 'cellClassRules': {'bg-red-200': r'x && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x)'}},
             ]
 
+    def _insert(self, line: dict) -> int:
+        return database_controller.add_animator(line)
+
+    def _update(self, line: dict):
+        database_controller.update_animator(line)
+
+    def _delete(self, ids: set[int]):
+        database_controller.delete_animators(ids)         
+
     def _get_row_data(self):
-        return self._grid_lines(database_controller.animators)
+        return self._grid_lines(database_controller.get_animators())
 
     def _get_required_fields(self) -> set[str]:
         return {'firstname', 'name', 'street', 'zip', 'city', 'phone'}        
@@ -52,11 +61,3 @@ class AnimatorsTab(AbstractPersonsTab):
     def _get_fields(self):
         return {f.name for f in fields(Animator)}
 
-    async def _save(self):
-        lines = await self.grille.get_client_data()
-        database_controller.animators = [
-            Animator(**{k: v for k, v in l.items() if k in self._get_fields()})
-            for l in lines
-            if any(str(l.get(c) or '').strip() for c in self._get_fields())
-        ]
-        database_controller.save_animators()

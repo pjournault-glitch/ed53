@@ -9,7 +9,6 @@ from tabs.abstract_person_tab import AbstractPersonsTab
 class SendersTab(AbstractPersonsTab):
 
     def __init__(self, on_show_participants=None):
-        # doit être défini avant super().__init__() (qui construit la grille)
         self._on_show_participants = on_show_participants
         super().__init__()
         self.grille.on('cellClicked', self._on_cell_clicked)    

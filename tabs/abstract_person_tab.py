@@ -265,5 +265,5 @@ class AbstractPersonsTab:
         ui.notify(f'{len(selection)} ligne(s) supprimée(s)')
 
     async def _save(self, e):
-        line = e.args['data']                         # contient l'id de la base
+        line = e.args['data']
         await run.io_bound(self._update, line)
