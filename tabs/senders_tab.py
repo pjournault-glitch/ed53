@@ -105,7 +105,7 @@ class SendersTab(AbstractPersonsTab):
     @staticmethod
     def _participants_per_sender() -> dict[str, int]:
         counts: dict[str, int] = {}
-        for p in database_controller.promotion.participants:
+        for p in database_controller.promotion.participants if database_controller.promotion else []:
             label = getattr(p, 'sender_label', '') or ''
             if label:
                 counts[label] = counts.get(label, 0) + 1

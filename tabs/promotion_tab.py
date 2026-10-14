@@ -9,7 +9,6 @@ class PromotionTab:
     def __init__(self):
         self._create_new_dialog()
         self._display_header()
-        ui.separator().classes('my-4')
 
         with ui.row().classes('w-full gap-4 items-stretch'):
             # Ouvrir une autre promotion
@@ -40,7 +39,8 @@ class PromotionTab:
                             'Cette valeur existe déjà': lambda v: not database_controller.promotion_exists(v)}, 
                             value=current_year, min=current_year-2, step=1, format='%4d').classes('w-full'),"Année de départ")
             ui.label().bind_text_from(self.new_promotion_year, 'value', backward=lambda v: f'Année de fin : {int(v) + 2}' if v is not None else '')
-            self.year_fee = required_label(ui.number('Tarif annuel', validation=required_rule, value=database_controller.promotion.year_fee, min=0, step=0.50, format='%.2f', suffix='€').classes('w-full'),"Tarif annuel")
+            current_value = database_controller.promotion.year_fee if database_controller.promotion else 0 
+            self.year_fee = required_label(ui.number('Tarif annuel', validation=required_rule, value=current_value, min=0, step=0.50, format='%.2f', suffix='€').classes('w-full'),"Tarif annuel")
             with ui.row().classes('justify-end w-full'):
                 ui.button('Annuler', on_click=self.dialogue.close).props('flat')
                 ui.button('Créer', on_click=self._create_new_promotion)        
@@ -48,18 +48,20 @@ class PromotionTab:
     @ui.refreshable
     def _display_header(self):
         promotion = database_controller.promotion
-        with ui.column().classes('gap-1'):
-            with ui.row().classes('items-center gap-3'):
-                if database_controller.get_latest_promotion() == promotion.year:
-                    ui.label(f"Dernière promotion : {promotion}").classes('text-h5')
-                    ui.badge('en cours', color='positive')
-                else:
-                    ui.label(f"Promotion : {promotion}").classes('text-h5')
-                    ui.badge('précédente', color='warning')
-                    ui.button('Revenir à la dernière promotion', icon='undo',
-                            on_click=lambda: self._select_promotion(database_controller.get_latest_promotion())).props('flat')
-            fee = f'{promotion.year_fee:.2f}'.replace('.', ',')
-            ui.label(f'Tarif annuel : {fee} €').classes('text-subtitle1 text-grey-8')
+        if promotion:
+            with ui.column().classes('gap-1'):
+                with ui.row().classes('items-center gap-3'):
+                    if database_controller.get_latest_promotion() == promotion.year:
+                        ui.label(f"Dernière promotion : {promotion}").classes('text-h5')
+                        ui.badge('en cours', color='positive')
+                    else:
+                        ui.label(f"Promotion : {promotion}").classes('text-h5')
+                        ui.badge('précédente', color='warning')
+                        ui.button('Revenir à la dernière promotion', icon='undo',
+                                on_click=lambda: self._select_promotion(database_controller.get_latest_promotion())).props('flat')
+                fee = f'{promotion.year_fee:.2f}'.replace('.', ',')
+                ui.label(f'Tarif annuel : {fee} €').classes('text-subtitle1 text-grey-8')
+            ui.separator().classes('my-4')
 
     def _create_new_promotion(self):
         required_fields = [self.new_promotion_year, self.year_fee]
@@ -68,8 +70,7 @@ class PromotionTab:
             return
 
         promotion = Promotion(int(self.new_promotion_year.value), self.year_fee.value, None)
-        database_controller.save_promotion(promotion)
-        database_controller.promotion = promotion
+        database_controller.promotion = database_controller.save_promotion(promotion)
 
         self._refresh_choices() 
         self.dialogue.close()

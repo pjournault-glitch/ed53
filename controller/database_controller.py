@@ -6,10 +6,10 @@ import json
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from controller.database import SessionLocal
 from model.model import Addressee, Animator, Information, Promotion, Sender
-from model.database_model import DbInformation, DbPersonne
+from model.database_model import DbInformation, DbPersonne, DbPromotion
 
 PERSON_FIELDS = {"sender": {"title", "firstname", "name", "street", "zip", "city", "phone", "mail", "organisation"},
                  "addressee": {"title", "firstname", "name", "street", "zip", "city", "phone", "mail"},
@@ -24,7 +24,6 @@ class DatabaseController:
         self._on_addressees_changed = []
         self._on_promotion_changed = []
         self._on_animators_changed = []
-
         self._promotion = None
         self.promotion = self.load_promotion(self.get_latest_promotion())
 
@@ -64,35 +63,16 @@ class DatabaseController:
     @promotion.setter
     def promotion(self, value:Promotion) -> None:
         self._promotion = value
-        for callback in self._on_promotion_changed:
-            callback()
+        self._notify_promotion_changed()
 
     """Permet de s'abonner aux changements de promotion en cours"""
     def subscribe_promotion_changed(self, callback) -> None:
         self._on_promotion_changed.append(callback)
 
-    """Renvoi l'année de la promotion en cours"""
-    @property
-    def promotion_year(self) -> int:
-        return self.promotion.year if self.promotion else None
-
-    @property
-    def promotion_participants(self) -> list:
-        return (self.promotion.participants if self.promotion else None) or []
-
-    """Enregistre une promotion"""
-    def save_promotion(self, promotion: Promotion) -> None:
-        self._write_json(self.db_path / f"promotion_{promotion.year}.json", asdict(promotion), indent=4)
-
-
-    """Renvoi le nom de fichier de la dernière promotion"""
-    def get_latest_promotion_file(self) -> str:
-        db_file_names = [p.name for p in self.db_path.iterdir() if p.is_file() and p.name.startswith("promotion_")]
-        return max(db_file_names, key=str.casefold, default=None)
-
-    """Renvoi l'année de la dernière promotion, à partir du nom du fichier"""
-    def get_latest_promotion(self) -> int:
-        return int(Path(self.get_latest_promotion_file()).stem[10:])
+    """Notifie les abonnés aux changement de promotion en cours"""
+    def _notify_promotion_changed(self) -> None:
+        for callback in self._on_promotion_changed:
+            callback()
 
     @staticmethod
     def _atomic_write(path: Path, content: str) -> None:
@@ -118,19 +98,58 @@ class DatabaseController:
             # un échec d'archivage ne doit jamais empêcher l'enregistrement principal
             logger.exception("Archivage impossible pour %s", path.name)
 
-    """Charge une promotion, définie par son année"""
-    def load_promotion(self, year: int) -> Promotion:
-        name = Path(self.db_path) / f"promotion_{year}.json"
-        with open(name, encoding='utf-8') as f:
-            return Promotion.from_dict(json.load(f))    
+    # Promotion ---------------------------------------------------------------------------------------------------------
+
+    """Renvoi les participants de la promotion en cours"""
+    def promotion_participants(self) -> list:
+        with SessionLocal() as session:
+            return session.scalars(
+                select(DbPersonne)
+                .where(DbPersonne.promotion_id == self.promotion_id,
+                    DbPersonne.type == "participant")
+                .order_by(DbPersonne.name, DbPersonne.firstname)
+            ).all()
 
     """Renvoi la liste des promotions existantes"""
     def existing_promotions(self) -> list[int]:
-        return [int(Path(p.name).stem[10:]) for p in self.db_path.iterdir() if p.is_file() and p.name.startswith("promotion_")]
+        with SessionLocal() as session:
+            return [p.year for p in session.scalars(select(DbPromotion).order_by(DbPromotion.year.desc())).all()]
+
+    """Enregistre une promotion"""
+    def save_promotion(self, promotion: Promotion) -> None:
+        with SessionLocal() as session:
+            db_promo = session.scalars(
+                select(DbPromotion).where(DbPromotion.year == promotion.year)
+            ).first()
+
+            if db_promo is None:
+                db_promo = DbPromotion(year=promotion.year, year_fee=promotion.year_fee)
+                session.add(db_promo)
+            else:
+                db_promo.year_fee = promotion.year_fee
+
+            session.commit()
+            return db_promo.to_entity()      
+
+    """Renvoi l'année de la dernière promotion"""
+    def get_latest_promotion(self) -> int:
+        with SessionLocal() as session:
+            return session.scalar(select(func.max(DbPromotion.year)))
+
+    """Charge une promotion, définie par son année"""
+    def load_promotion(self, year: int) -> Promotion:
+        with SessionLocal() as session:
+            db_promotion = session.scalars(select(DbPromotion).where(DbPromotion.year == year)).first()
+            return db_promotion.to_entity() if db_promotion else None
 
     """Vérifie si une promotion existe par son année (ou année -1, puisqu'une promotion dure 2 ans)"""
     def promotion_exists(self, year:int) -> bool:
-        return year in self.existing_promotions() or (year - 1) in self.existing_promotions()
+        with SessionLocal() as session:
+            return session.scalar(
+                select(DbPromotion.id)
+                .where(DbPromotion.year.in_([year, year - 1]))
+                .limit(1)
+            ) is not None
 
     # Personnes ------------------------------------------------------------------------------------------------------------
 

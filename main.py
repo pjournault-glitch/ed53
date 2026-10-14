@@ -137,10 +137,9 @@ class Main:
             etat = {'titre': 'Promotion'}
             with ui.tabs().props('inline-label') as self.tabs:
                 with ui.tab(name='promo', label=''):
-                    ui.label().bind_text_from(database_controller, 'promotion_year', backward=lambda y: f'Promotion ({y} - {y+2})' if y else 'Promotion').style('font-size: 16px !important')
+                    self._promotion_label = ui.label().style('font-size: 14px !important')
                 with ui.tab('participants') as self._tab_participants:
-                    ui.badge(color='grey', text_color='white').classes('ml-2').props('rounded').bind_text_from(database_controller, 'promotion_participants',
-                        backward=lambda participants: str(len(participants)))
+                    self._participants_badge = ui.badge(color='grey', text_color='white').classes('ml-2').props('rounded')
                 with ui.tab('animators', label='Animateurs').style('font-size: 18px !important'):
                     self._animators_badge = ui.badge(color='grey', text_color='white').classes('ml-2')
                 with ui.tab('addressees', label='Destinataires').style('font-size: 18px !important'):
@@ -149,7 +148,9 @@ class Main:
                     self._senders_badge = ui.badge(color='grey', text_color='white').classes('ml-2').props('rounded')
                 ui.tab('info', label='Configuration', icon='settings').style('font-size: 18px !important')
                 ui.tab('apropos', label='A PROPOS', icon='info').style('font-size: 18px !important')
+            self._update_promotion_information()
             self._update_senders_badge()
+            self._update_animators_badge()
             self._update_addressees_badge()
 
     def _subscribe_changes(self):
@@ -157,6 +158,7 @@ class Main:
         database_controller.subscribe_senders_changed(self._update_senders_badge)
         database_controller.subscribe_addressees_changed(self._update_addressees_badge)
         database_controller.subscribe_animators_changed(self._update_animators_badge)
+        database_controller.subscribe_promotion_changed(self._update_promotion_information)
 
     def _update_senders_badge(self):
         """Mise à jour du nombre d'envoyants dans le badge de l'onglet envoyants"""
@@ -169,6 +171,16 @@ class Main:
     def _update_animators_badge(self):
         """Mise à jour du nombre d'animateurs dans le badge de l'onglet animateurs"""
         self._animators_badge.text = str(len(database_controller.get_animators()))
+
+    def _update_promotion_information(self):
+        """Mise à jour du nombre d'animateurs dans le badge de l'onglet animateurs"""
+        promotion = database_controller.promotion
+        if promotion:
+            self._promotion_label.text = f"Promotion {promotion.year} - {promotion.year + 2}"
+            self._participants_badge.text = str(len(promotion.participants))
+        else:
+            self._promotion_label.text = f"Gestion des promotions"
+            self._participants_badge.text = "0"
 
     def _show_participants(self, label: str):
         """Basculer vers l'onglet des participants (à partir de l'onglet des envoyants) en filtrant sur l'envoyant"""

@@ -122,6 +122,7 @@ class Promotion:
     year: int
     year_fee: float
     participants: list[Participant] | None
+    id: int | None = None
 
     def __str__(self) -> str:
         return f"{self.year} - {self.year + 2}"    

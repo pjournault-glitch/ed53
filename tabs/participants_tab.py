@@ -33,7 +33,7 @@ class ParticipantsTab(AbstractPersonsTab):
 
     @staticmethod
     def _promotion_text() -> str:
-        year = database_controller.promotion_year
+        year = database_controller.promotion.year if database_controller.promotion else None        
         return f'Promotion ({year}-{year + 2})' if year else ''        
 
     def _get_empty_line(self):
@@ -68,7 +68,7 @@ class ParticipantsTab(AbstractPersonsTab):
             ]
 
     def _get_row_data(self):
-        return self._grid_lines(database_controller.promotion.participants)
+        return self._grid_lines(database_controller.promotion.participants if database_controller.promotion else [])
 
     def _get_required_fields(self) -> set[str]:
         return {'firstname', 'name', 'street', 'zip', 'city', 'phone'}    

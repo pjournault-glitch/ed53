@@ -2,7 +2,7 @@ from sqlalchemy import Column, Float, ForeignKey, Integer, String, JSON
 from sqlalchemy.orm import DeclarativeBase, relationship
 from sqlalchemy.ext.mutable import MutableDict
 
-from model.model import Information, Tag
+from model.model import Information, Participant, Promotion, Tag
 
 
 class Base(DeclarativeBase):
@@ -28,6 +28,10 @@ class DbPersonne(Base):
 
     promotion = relationship("DbPromotion", back_populates="personnes")
 
+    def to_participant(self):
+        #TODO Ajouter le sender label
+        return Participant(title=self.title, firstname=self.firstname, name=self.name, street=self.street, zip=self.zip, city=self.city, phone=self.phone, mail=self.mail)
+
 
 class DbPromotion(Base):
     __tablename__ = "promotions"
@@ -37,6 +41,9 @@ class DbPromotion(Base):
     year_fee = Column(Float, nullable=False)
 
     personnes = relationship("DbPersonne", back_populates="promotion")
+
+    def to_entity(self) -> Promotion:
+        return Promotion(id=self.id, year=self.year, year_fee=self.year_fee, participants=[p.to_participant() for p in self.personnes])
 
 
 class DbInformation(Base):
