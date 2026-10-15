@@ -29,7 +29,6 @@ logger = logging.getLogger('app')
 class MainWindow:
     def __init__(self, session_state:SessionState):
         self.session_state = session_state
-        logger.info(f"MainWindow started {self.session_state.promotion_id}")
         self._build_header_and_css()        
         self._build_drawer()
         self._build_tabs()
@@ -38,7 +37,7 @@ class MainWindow:
         self.last_speaker = None
         self.last_title = None
         self.last_intervention_date = None
-        ui.context.client.on_disconnect(self._unsubscribe_changes)
+        # ui.context.client.on_disconnect(self._unsubscribe_changes)
 
     def _build_header_and_css(self):
         """Construit le header et les css HTML"""
@@ -128,21 +127,24 @@ class MainWindow:
                 ui.tab('info', label='Configuration', icon='settings').style('font-size: 18px !important')
                 ui.tab('apropos', label='A PROPOS', icon='info').style('font-size: 18px !important')
             self._update_promotion_information()
+            self._on_animators_changed(self.session_state.session_id)
             self._on_senders_changed(self.session_state.session_id)
-            self._update_animators_badge()
-            self._update_addressees_badge()
+            self._on_adressees_changed(self.session_state.session_id)
 
     def _subscribe_changes(self):
         """Inscriptions aux changements"""
         database_controller.subscribe_senders_changed(self._on_senders_changed)
-        database_controller.subscribe_addressees_changed(self._update_addressees_badge)
-        database_controller.subscribe_animators_changed(self._update_animators_badge)
+        database_controller.subscribe_addressees_changed(self._on_adressees_changed)
+        database_controller.subscribe_animators_changed(self._on_animators_changed)
         database_controller.subscribe_promotion_changed(self._update_promotion_information)
         database_controller.subscribe_participants_changed(self._update_participants_badge)
 
     def _unsubscribe_changes(self):
+        database_controller.unsubscribe_senders_changed(self._on_senders_changed)
+        database_controller.unsubscribe_addressees_changed(self._on_adressees_changed)
+        database_controller.unsubscribe_animators_changed(self._on_animators_changed)
+
         # TODO : Implémenter cette méthode
-        pass
 
     def _on_senders_changed(self, origin, op=None, payload=None):
         """Mise à jour des envoyants - par soi-même ou par une autre sessions"""
@@ -151,13 +153,19 @@ class MainWindow:
             return
         self._senders_tab.apply_remote_change(op, payload)        
 
-    def _update_addressees_badge(self):
+    def _on_adressees_changed(self, origin, op=None, payload=None):
         """Mise à jour du nombre de destinataires dans le badge de l'onglet destinataires"""
         self._addressees_badge.text = str(len(database_controller.get_addressees()))
+        if origin == self.session_state.session_id:
+            return
+        self._addressees_tab.apply_remote_change(op, payload)        
 
-    def _update_animators_badge(self):
+    def _on_animators_changed(self, origin, op=None, payload=None):
         """Mise à jour du nombre d'animateurs dans le badge de l'onglet animateurs"""
         self._animators_badge.text = str(len(database_controller.get_animators()))
+        if origin == self.session_state.session_id:
+            return
+        self._animators_tab.apply_remote_change(op, payload)        
 
     def _update_promotion_information(self):
         """Mise à jour du nombre d'animateurs dans le badge de l'onglet animateurs"""
@@ -186,9 +194,9 @@ class MainWindow:
             with ui.tab_panel('participants').classes('flex flex-col min-h-0'):
                 self._participants_tab = ParticipantsTab(self.session_state)
             with ui.tab_panel('animators').classes('flex flex-col min-h-0'):
-                AnimatorsTab(self.session_state)                
+                self._animators_tab = AnimatorsTab(self.session_state)                
             with ui.tab_panel('addressees').classes('flex flex-col min-h-0'):
-                AddresseesTab(self.session_state)
+                self._addressees_tab = AddresseesTab(self.session_state)
             with ui.tab_panel('senders').classes('flex flex-col min-h-0'):
                 self._senders_tab = SendersTab(self.session_state, on_show_participants=self._show_participants)                
             with ui.tab_panel('info'):

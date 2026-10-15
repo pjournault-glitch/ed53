@@ -1,12 +1,13 @@
 from dataclasses import asdict
 import json
+import logging
 import os
 import uuid
 from nicegui import ui, run
 import io
 from openpyxl import load_workbook
-from controller.database_controller import database_controller
 
+logger = logging.getLogger('app')
 
 class AbstractPersonsTab:
     def __init__(self):
@@ -33,7 +34,7 @@ class AbstractPersonsTab:
                     setTimeout(() => params.api.autoSizeAllColumns(), 50);
                 }
             }""",
-        }, auto_size_columns=False).classes('w-full grow min-h-[200px]')
+        }, auto_size_columns=True).classes('w-full grow min-h-[200px]')
         self.grille.on('cellValueChanged', self._save)
         self.grille.on('modelUpdated', self._update_count, args=['type'])
         self.grille.on('cellValueChanged', self._update_count, args=['type'])
@@ -44,8 +45,22 @@ class AbstractPersonsTab:
                 if os.getenv("SHOW_IMPORT").lower() == "yes":
                     self._btn_import = ui.button("Importer un fichier excel", on_click=lambda: self._upload.run_method('pickFiles'), icon='upload_file')
                 self._btn_remove = ui.button('Supprimer la sélection', on_click=self._remove_selection, color='negative', icon='delete')
+                ui.button(icon='sym_o_fit_width', on_click=lambda: self.grille.run_grid_method('autoSizeAllColumns')).props('flat round dense').tooltip('Ajuster la largeur des colonnes')
+                ui.button(icon='sym_o_refresh', on_click=self._reload).props('flat round dense').tooltip('Recharger les données')
             self._count_label = ui.label().classes('text-grey-7')
         self._update_count_local()
+        self._notifier = None
+
+    async def _reload(self):
+        try:
+            rows = self._get_row_data()
+            self.grille.options['rowData'] = rows             # copie serveur à jour
+            self.grille.run_grid_method('setGridOption', 'rowData', rows)
+            await self._update_count()
+            ui.notify('Données rechargées', type='positive')
+        except Exception as ex:
+            logger.exception('Rechargement impossible')
+            ui.notify(f'Rechargement impossible : {ex}', type='negative')        
 
     def _editable_fields(self) -> list[str]:
         return [c['field'] for c in self.grille.options['columnDefs']
@@ -172,10 +187,11 @@ class AbstractPersonsTab:
                     line['id'] = self._insert(line)
 
             await run.io_bound(insert_all)
+            self._notifier(self.session_state.session_id, 'add', lines)
 
             # Ajout des nouvelles lignes à la grille, sans toucher aux existantes
             self.grille.run_grid_method('applyTransaction', {'add': lines})
-            await self.grille.run_grid_method('autoSizeAllColumns')
+            self.grille.run_grid_method('autoSizeAllColumns')
 
             msg = f"{len(lines)} ligne(s) importée(s)"
             if ignored:
@@ -227,8 +243,8 @@ class AbstractPersonsTab:
     async def _add_line(self):
         line = {**self._get_empty_line()}
         line['id'] = self._insert(line)               # id fourni par la base
+        self._notifier(self.session_state.session_id, 'add', [line])
         self.grille.run_grid_method('applyTransaction', {'add': [line]})
-        database_controller.notify_senders_changed(self.session_state.session_id, 'add', [line])
 
     @staticmethod
     def _label(row: dict) -> str:
@@ -261,11 +277,11 @@ class AbstractPersonsTab:
 
         ids = {r['id'] for r in selection}
         self._delete(ids)
+        self._notifier(self.session_state.session_id, 'delete', selection)
         lines = await self.grille.get_client_data()
         self.grille.options['rowData'] = [l for l in lines if l['id'] not in ids]
         self.grille.update()
         ui.notify(f'{len(selection)} ligne(s) supprimée(s)')
-        database_controller.notify_senders_changed(self.session_state.session_id, 'delete', selection)
 
 
     def apply_remote_change(self, op, payload):
@@ -278,5 +294,5 @@ class AbstractPersonsTab:
 
     async def _save(self, e):
         line = e.args['data']
-        await run.io_bound(self._update, line)
-        database_controller.notify_senders_changed(self.session_state.session_id, 'update', [line])
+        self._update(line)
+        self._notifier(self.session_state.session_id, 'update', [line])

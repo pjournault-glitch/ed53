@@ -14,6 +14,7 @@ class SendersTab(AbstractPersonsTab):
         self._on_show_participants = on_show_participants
         super().__init__()
         self.grille.on('cellClicked', self._on_cell_clicked)
+        self._notifier = database_controller.notify_senders_changed
 
     def _get_empty_line(self):
         return {
@@ -49,7 +50,7 @@ class SendersTab(AbstractPersonsTab):
                      return `<a style="cursor:pointer;text-decoration:underline;color:#1976d2">${n}</a>`;
                  }"""},
             ]
-
+    
     def _insert(self, line: dict) -> int:
         return database_controller.add_sender(line)
 
@@ -129,4 +130,5 @@ class SendersTab(AbstractPersonsTab):
             return
         row = e.args.get('data') or {}
         if self._on_show_participants:
-            self._on_show_participants(self._row_label(row))    
+            self._on_show_participants(self._row_label(row))
+

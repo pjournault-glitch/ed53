@@ -1,3 +1,5 @@
+import logging
+
 from sqlalchemy import delete, func, select
 from controller.database import SessionLocal
 from model.model import Addressee, Animator, Information, Participant, Promotion, Sender
@@ -8,49 +10,20 @@ PERSON_FIELDS = {"sender": {"title", "firstname", "name", "street", "zip", "city
                  "animator": {"title", "firstname", "name", "street", "zip", "city", "phone", "mail"},
                  "participant": {"title", "firstname", "name", "street", "zip", "city", "phone", "mail", "sender_label"}}
 
+logger = logging.getLogger('app')
+
 class DatabaseController:
     """Gestionnaire des données"""
     def __init__(self) -> None:
 
         self._senders_callbacks = []
-        self._on_addressees_changed = []
+        self._addressees_callbacks = []
         self._on_promotion_changed = []
-        self._on_animators_changed = []
+        self._animators_callbacks = []
         self._on_participants_changed = []
         self._promotion = None
         self.promotion = self.load_promotion(self.get_latest_promotion())
-
-    """Permet de s'abonner aux changements d'envoyants"""
-    def subscribe_senders_changed(self, callback) -> None:
-        self._senders_callbacks.append(callback)
-
-    """Permet de se désabonner aux changements d'envoyants"""
-    def unsubscribe_senders_changed(self, callback):
-        self._senders_callbacks.remove(callback)        
-
-    """Notifie les abonnés aux changements d'envoyant"""
-    def notify_senders_changed(self, origin: str, op: str, payload):
-        for callback in list(self._senders_callbacks):
-            callback(origin, op, payload)   
-
-    """Permet de s'abonner aux changements dans les destinataires en cours"""
-    def subscribe_addressees_changed(self, callback) -> None:
-        self._on_addressees_changed.append(callback)        
-
-    """Notifie les abonnés aux changement de destinataires"""
-    def _notify_addressees_changed(self) -> None:
-        for callback in self._on_addressees_changed:
-            callback()
-
-    """Permet de s'abonner aux changements dans les animateurs en cours"""
-    def subscribe_animators_changed(self, callback) -> None:
-        self._on_animators_changed.append(callback)        
-
-    """Notifie les abonnés aux changement des animateurs"""
-    def _notify_animators_changed(self) -> None:
-        for callback in self._on_animators_changed:
-            callback()
-
+          
     """Permet de s'abonner aux changements de participants"""
     def subscribe_participants_changed(self, callback) -> None:
         self._on_participants_changed.append(callback)
@@ -58,7 +31,10 @@ class DatabaseController:
     """Notifie les abonnés aux changement de participants"""
     def _notify_participants_changed(self) -> None:
         for callback in self._on_participants_changed:
-            callback()
+            try:
+                callback()
+            except Exception:
+                logger.exception('Callback de notification en échec')  
 
     """Renvoi la promotion en cours d'utilisation"""
     @property
@@ -158,20 +134,17 @@ class DatabaseController:
             session.add(p)
             session.commit()
             self._promotion = self.load_promotion(self.promotion.year)
-            self._notify_participants_changed()
             return p.id
 
     """Met à jour un participant"""
     def update_participant(self, data: dict) -> None:
         self._update_person("participant", data)
         self._promotion = self.load_promotion(self.promotion.year)
-        self._notify_participants_changed()
 
     """Supprime des participants"""
     def delete_participants(self, ids: set[int]) -> None:
         self._delete_persons(ids)
         self._promotion = self.load_promotion(self.promotion.year)
-        self._notify_participants_changed()        
 
     # Personnes ------------------------------------------------------------------------------------------------------------
 
@@ -206,6 +179,22 @@ class DatabaseController:
 
     # Envoyants ------------------------------------------------------------------------------------------------------------
 
+    """Permet de s'abonner aux changements d'envoyants"""
+    def subscribe_senders_changed(self, callback) -> None:
+        self._senders_callbacks.append(callback)
+
+    """Permet de se désabonner aux changements d'envoyants"""
+    def unsubscribe_senders_changed(self, callback):
+        self._senders_callbacks.remove(callback)        
+
+    """Notifie les abonnés aux changements d'envoyant"""
+    def notify_senders_changed(self, origin: str, op: str, payload):
+        for callback in list(self._senders_callbacks):
+            try:
+                callback(origin, op, payload)
+            except Exception:
+                logger.exception('Callback de notification en échec')    
+
     """Charge les envoyants"""
     def get_senders(self) -> list[Sender]:
         return [
@@ -228,6 +217,22 @@ class DatabaseController:
 
     # Destinataires ------------------------------------------------------------------------------------------------------------
 
+    """Permet de s'abonner aux changements dans les destinataires en cours"""
+    def subscribe_addressees_changed(self, callback) -> None:
+        self._addressees_callbacks.append(callback)        
+
+    """Permet de se désabonner aux changements de destinataires"""
+    def unsubscribe_addressees_changed(self, callback):
+        self._addressees_callbacks.remove(callback)        
+
+    """Notifie les abonnés aux changement de destinataires"""
+    def notify_addressees_changed(self, origin: str, op: str, payload):
+        for callback in list(self._addressees_callbacks):
+            try:
+                callback(origin, op, payload)
+            except Exception:
+                logger.exception('Callback de notification en échec')  
+
     """Charge les destinataires"""
     def get_addressees(self) -> list[Addressee]:
         return [
@@ -238,20 +243,33 @@ class DatabaseController:
     """Ajoute un destinataire"""
     def add_addressee(self, data: dict) -> int:
         id = self._add_person("addressee", data)
-        self._notify_addressees_changed()
         return id
 
     """Met à jour un destinataire"""
     def update_addressee(self, data: dict) -> None:
         self._update_person("addressee", data)
-        self._notify_addressees_changed()
 
     """Supprime des destinataires"""
     def delete_addressees(self, ids: set[int]) -> None:
         self._delete_persons(ids)
-        self._notify_addressees_changed()
 
     # Animateurs ------------------------------------------------------------------------------------------------------------
+
+    """Permet de s'abonner aux changements dans les animateurs en cours"""
+    def subscribe_animators_changed(self, callback) -> None:
+        self._animators_callbacks.append(callback)        
+
+    """Permet de se désabonner aux changements d'animateurs"""
+    def unsubscribe_animators_changed(self, callback):
+        self._animators_callbacks.remove(callback)   
+
+    """Notifie les abonnés aux changement des animateurs"""
+    def notify_animators_changed(self, origin: str, op: str, payload):
+        for callback in self._animators_callbacks:
+            try:
+                callback(origin, op, payload)
+            except Exception:
+                logger.exception('Callback de notification en échec')  
 
     """Charge les animateurs"""
     def get_animators(self) -> list[Animator]:
@@ -263,18 +281,15 @@ class DatabaseController:
     """Ajoute un animateur"""
     def add_animator(self, data: dict) -> int:
         id = self._add_person("animator", data)
-        self._notify_animators_changed()
         return id
 
     """Met à jour un animateur"""
     def update_animator(self, data: dict) -> None:
         self._update_person("animator", data)
-        self._notify_animators_changed()
 
     """Supprime des animateurs"""
     def delete_animators(self, ids: set[int]) -> None:
         self._delete_persons(ids)
-        self._notify_animators_changed()
 
     # Informations --------------------------------------------------------------------------------------------------
 

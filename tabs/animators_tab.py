@@ -11,6 +11,7 @@ class AnimatorsTab(AbstractPersonsTab):
     def __init__(self, session_state:SessionState):
         super().__init__()
         self.session_state = session_state
+        self._notifier = database_controller.notify_animators_changed
 
     def _get_empty_line(self):
         return {
