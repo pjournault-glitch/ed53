@@ -15,14 +15,26 @@ logger = logging.getLogger('app')
 class DatabaseController:
     """Gestionnaire des données"""
     def __init__(self) -> None:
-
+        self._information_callbacks = []
         self._senders_callbacks = []
         self._addressees_callbacks = []
-        self._on_promotion_changed = []
         self._animators_callbacks = []
+        self._on_promotion_changed = []
         self._on_participants_changed = []
-        self._promotion = None
-        self.promotion = self.load_promotion(self.get_latest_promotion())
+
+    def subscribe_information_changed(self, callback):
+        self._information_callbacks.append(callback)
+
+    def unsubscribe_information_changed(self, callback):
+        if callback in self._information_callbacks:
+            self._information_callbacks.remove(callback)
+
+    def notify_information_changed(self, origin, op, payload):
+        for callback in list(self._information_callbacks):
+            try:
+                callback(origin, op, payload)
+            except Exception:
+                logger.exception('Callback information en échec')        
           
     """Permet de s'abonner aux changements de participants"""
     def subscribe_participants_changed(self, callback) -> None:

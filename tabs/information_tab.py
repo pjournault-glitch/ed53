@@ -1,5 +1,5 @@
 import re
-from nicegui import ui
+from nicegui import run, ui
 from controller.database_controller import database_controller
 from model.model import Information, Tag
 from util.util import required_label, required_rule
@@ -22,6 +22,7 @@ class InformationTab:
     def __init__(self, session_state:SessionState):
         super().__init__()
         self.session_state = session_state
+        self._notifier = database_controller.notify_information_changed
         with ui.card().props('flat bordered').classes('w-full p-6'):
             with ui.row().classes('w-full no-wrap gap-8'):
                 with ui.column().classes('flex-1 min-w-0'):
@@ -144,21 +145,31 @@ class InformationTab:
         ]        
         self._info = None
         self.reload()
+        self._focused = None                      # champ en cours de saisie dans cette session
+
+        self._client = ui.context.client          # pour afficher les messages dans le bon navigateur
+        database_controller.subscribe_information_changed(self._on_information_changed)        
 
         all_fields = [f for f, _ in self._mapping] + [f for f, _, _ in self._mail_tag_mapping] + [f for f, _, _ in self._file_tag_mapping]  + [f for f, _, _ in self._badge_tag_mapping]
         for field in all_fields:
-            field.on('blur', lambda e, f=field: self.autosave(f)) 
+            field.on('focus', lambda e, f=field: setattr(self, '_focused', f))
+            field.on('blur', lambda e, f=field: self.autosave(f))
+
+    def _on_information_changed(self, origin, op, payload):
+        if origin == self.session_state.session_id:
+            return
+        self.reload(keep=self._focused)
 
     async def autosave(self, field):
-        # on ne valide que le champ quitté (pas de rouge sur les champs
-        # que l'utilisateur n'a pas encore remplis)
+        if self._focused is field:
+            self._focused = None
         if not field.validate():
             return
-        # on n'enregistre que si tous les champs obligatoires sont valides,
-        # sans afficher d'erreur sur les autres
         if not self._is_complete():
             return
-        database_controller.save_information(self._build_information())
+        info = self._build_information()          # lecture de l'interface avant l'await
+        await run.io_bound(database_controller.save_information, info)
+        self._notifier(self.session_state.session_id, 'update', None)
 
     def _is_complete(self) -> bool:
         required = [self.name, self.addressee, self.street, self.zip_code,
@@ -245,28 +256,21 @@ class InformationTab:
                 return False
         return True                  
 
-    def reload(self):
+    def reload(self, keep=None):
         self._info = database_controller.load_information()
-        for field, attr in self._mapping:
-            field.value = getattr(self._info, attr, '') or ''
-
-        tag = getattr(self._info, 'mail_tag', None)
-        for field, attr, _ in self._mail_tag_mapping:
-            value = getattr(tag, attr, None) if tag else None
-            field.value = '' if value is None else f'{value:g}'   # 10.0 -> "10", 2 -> "2"
-
-        tag = getattr(self._info, 'file_tag', None)
-        for field, attr, _ in self._file_tag_mapping:
-            value = getattr(tag, attr, None) if tag else None
-            field.value = '' if value is None else f'{value:g}'   # 10.0 -> "10", 2 -> "2"
-
-        tag = getattr(self._info, 'badge_tag', None)
-        for field, attr, _ in self._badge_tag_mapping:
-            value = getattr(tag, attr, None) if tag else None
-            field.value = '' if value is None else f'{value:g}'   # 10.0 -> "10", 2 -> "2"
-
-        for field in [f for f, _ in self._mapping] + [f for f, _, _ in self._mail_tag_mapping] + [f for f, _, _ in self._file_tag_mapping]  + [f for f, _, _ in self._badge_tag_mapping]:
-            field.error = None   # pas de messages rouges à l'ouverture
+        values = [(field, getattr(self._info, attr, '') or '') for field, attr in self._mapping]
+        for tag_name, mapping in (('mail_tag', self._mail_tag_mapping),
+                                ('file_tag', self._file_tag_mapping),
+                                ('badge_tag', self._badge_tag_mapping)):
+            tag = getattr(self._info, tag_name, None)
+            for field, attr, _ in mapping:
+                value = getattr(tag, attr, None) if tag else None
+                values.append((field, '' if value is None else f'{value:g}'))
+        for field, value in values:
+            if field is keep:
+                continue                           # ne pas écraser ce que l'utilisateur est en train de saisir
+            field.value = value
+            field.error = None
 
     def _build_mail_tag(self) -> Tag:
         values = {attr: kind(self._num(field))
