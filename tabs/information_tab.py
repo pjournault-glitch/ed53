@@ -3,6 +3,7 @@ from nicegui import ui
 from controller.database_controller import database_controller
 from model.model import Information, Tag
 from util.util import required_label, required_rule
+from model.session_state import SessionState
 
 
 def is_valid_iban(value: str) -> bool:
@@ -18,7 +19,9 @@ A4_WIDTH_MM = 210
 A4_HEIGHT_MM = 297
 
 class InformationTab:
-    def __init__(self):
+    def __init__(self, session_state:SessionState):
+        super().__init__()
+        self.session_state = session_state
         with ui.card().props('flat bordered').classes('w-full p-6'):
             with ui.row().classes('w-full no-wrap gap-8'):
                 with ui.column().classes('flex-1 min-w-0'):

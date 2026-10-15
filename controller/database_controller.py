@@ -1,11 +1,3 @@
-from asyncio.log import logger
-from datetime import date
-import logging
-from dataclasses import asdict
-import json
-import os
-from pathlib import Path
-from dotenv import load_dotenv
 from sqlalchemy import delete, func, select
 from controller.database import SessionLocal
 from model.model import Addressee, Animator, Information, Participant, Promotion, Sender
@@ -19,9 +11,8 @@ PERSON_FIELDS = {"sender": {"title", "firstname", "name", "street", "zip", "city
 class DatabaseController:
     """Gestionnaire des données"""
     def __init__(self) -> None:
-        load_dotenv()
-        self.db_path = Path(os.getenv("DATABASE", "db"))
-        self._on_senders_changed = []
+
+        self._senders_callbacks = []
         self._on_addressees_changed = []
         self._on_promotion_changed = []
         self._on_animators_changed = []
@@ -31,12 +22,16 @@ class DatabaseController:
 
     """Permet de s'abonner aux changements d'envoyants"""
     def subscribe_senders_changed(self, callback) -> None:
-        self._on_senders_changed.append(callback)
+        self._senders_callbacks.append(callback)
 
-    """Notifie les abonnés aux changement d'envoyant"""
-    def _notify_senders_changed(self) -> None:
-        for callback in self._on_senders_changed:
-            callback()
+    """Permet de se désabonner aux changements d'envoyants"""
+    def unsubscribe_senders_changed(self, callback):
+        self._senders_callbacks.remove(callback)        
+
+    """Notifie les abonnés aux changements d'envoyant"""
+    def notify_senders_changed(self, origin: str, op: str, payload):
+        for callback in list(self._senders_callbacks):
+            callback(origin, op, payload)   
 
     """Permet de s'abonner aux changements dans les destinataires en cours"""
     def subscribe_addressees_changed(self, callback) -> None:
@@ -94,7 +89,7 @@ class DatabaseController:
             return [p.year for p in session.scalars(select(DbPromotion).order_by(DbPromotion.year.desc())).all()]
 
     """Enregistre une promotion"""
-    def save_promotion(self, promotion: Promotion) -> None:
+    def save_promotion(self, promotion: Promotion) -> DbPromotion:
         with SessionLocal() as session:
             db_promo = session.scalars(
                 select(DbPromotion).where(DbPromotion.year == promotion.year)
@@ -113,6 +108,22 @@ class DatabaseController:
     def get_latest_promotion(self) -> int:
         with SessionLocal() as session:
             return session.scalar(select(func.max(DbPromotion.year)))
+
+    """Renvoi l'id de la dernière promotion"""
+    def get_latest_promotion_id(self) -> int | None:        
+        latest_year = self.get_latest_promotion()
+        if not latest_year:
+            return None
+        with SessionLocal() as session:
+            return session.scalar(select(DbPromotion.id).where(DbPromotion.year == latest_year))
+
+    """Renvoi une promotion par son id"""
+    def get_promotion_by_id(self, id) -> Promotion | None:
+        with SessionLocal() as session:
+            db_promotion = session.scalar(select(DbPromotion).where(DbPromotion.id == id))
+            if not db_promotion:
+                return None 
+            return db_promotion.to_entity()
 
     """Charge une promotion, définie par son année"""
     def load_promotion(self, year: int) -> Promotion:
@@ -192,7 +203,6 @@ class DatabaseController:
         with SessionLocal() as session:
             session.execute(delete(DbPersonne).where(DbPersonne.id.in_(ids)))
             session.commit()
-            self._notify_senders_changed()
 
     # Envoyants ------------------------------------------------------------------------------------------------------------
 
@@ -206,18 +216,15 @@ class DatabaseController:
     """Ajoute un envoyant"""
     def add_sender(self, data: dict) -> int:
         id = self._add_person("sender", data)
-        self._notify_senders_changed()
         return id
 
     """Met à jour un envoyant"""
     def update_sender(self, data: dict) -> None:
         self._update_person("sender", data)
-        self._notify_senders_changed()
 
     """Supprime des envoyants"""
     def delete_senders(self, ids: set[int]) -> None:
         self._delete_persons(ids)
-        self._notify_senders_changed()
 
     # Destinataires ------------------------------------------------------------------------------------------------------------
 

@@ -4,9 +4,13 @@ from nicegui import run
 from controller.database_controller import database_controller
 from model.model import Addressee
 from tabs.abstract_person_tab import AbstractPersonsTab
+from model.session_state import SessionState
 
 
 class AddresseesTab(AbstractPersonsTab):
+    def __init__(self, session_state:SessionState):
+        super().__init__()
+        self.session_state = session_state
 
     def _get_empty_line(self):
         return {

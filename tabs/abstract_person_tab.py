@@ -5,6 +5,7 @@ import uuid
 from nicegui import ui, run
 import io
 from openpyxl import load_workbook
+from controller.database_controller import database_controller
 
 
 class AbstractPersonsTab:
@@ -227,6 +228,7 @@ class AbstractPersonsTab:
         line = {**self._get_empty_line()}
         line['id'] = self._insert(line)               # id fourni par la base
         self.grille.run_grid_method('applyTransaction', {'add': [line]})
+        database_controller.notify_senders_changed(self.session_state.session_id, 'add', [line])
 
     @staticmethod
     def _label(row: dict) -> str:
@@ -263,7 +265,18 @@ class AbstractPersonsTab:
         self.grille.options['rowData'] = [l for l in lines if l['id'] not in ids]
         self.grille.update()
         ui.notify(f'{len(selection)} ligne(s) supprimée(s)')
+        database_controller.notify_senders_changed(self.session_state.session_id, 'delete', selection)
+
+
+    def apply_remote_change(self, op, payload):
+        if op == 'add':
+            self.grille.run_grid_method('applyTransaction', {'add': payload})
+        elif op == 'update':
+            self.grille.run_grid_method('applyTransaction', {'update': payload})
+        elif op == 'delete':
+            self.grille.run_grid_method('applyTransaction', {'remove': payload})        
 
     async def _save(self, e):
         line = e.args['data']
         await run.io_bound(self._update, line)
+        database_controller.notify_senders_changed(self.session_state.session_id, 'update', [line])

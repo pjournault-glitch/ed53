@@ -3,15 +3,17 @@ import json
 from nicegui import ui
 from controller.database_controller import database_controller
 from model.model import Sender
+from model.session_state import SessionState
 from tabs.abstract_person_tab import AbstractPersonsTab
 
 
 class SendersTab(AbstractPersonsTab):
 
-    def __init__(self, on_show_participants=None):
+    def __init__(self, session_state:SessionState, on_show_participants=None):
+        self.session_state = session_state
         self._on_show_participants = on_show_participants
         super().__init__()
-        self.grille.on('cellClicked', self._on_cell_clicked)    
+        self.grille.on('cellClicked', self._on_cell_clicked)
 
     def _get_empty_line(self):
         return {
@@ -102,10 +104,9 @@ class SendersTab(AbstractPersonsTab):
     def _get_fields(self):
         return {f.name for f in fields(Sender)}
 
-    @staticmethod
-    def _participants_per_sender() -> dict[str, int]:
+    def _participants_per_sender(self) -> dict[str, int]:
         counts: dict[str, int] = {}
-        for p in database_controller.promotion.participants if database_controller.promotion else []:
+        for p in self.session_state.promotion.participants if self.session_state.promotion else []:
             label = getattr(p, 'sender_label', '') or ''
             if label:
                 counts[label] = counts.get(label, 0) + 1

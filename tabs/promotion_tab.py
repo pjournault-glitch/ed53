@@ -2,11 +2,14 @@ from datetime import date
 from nicegui import ui
 from controller.database_controller import database_controller
 from model.model import Promotion
+from model.session_state import SessionState
 from util.util import required_label, required_rule
 
 
 class PromotionTab:
-    def __init__(self):
+    def __init__(self, session_state:SessionState):
+        super().__init__()
+        self.session_state = session_state
         self._create_new_dialog()
         self._display_header()
 
@@ -39,7 +42,7 @@ class PromotionTab:
                             'Cette valeur existe déjà': lambda v: not database_controller.promotion_exists(v)}, 
                             value=current_year, min=current_year-2, step=1, format='%4d').classes('w-full'),"Année de départ")
             ui.label().bind_text_from(self.new_promotion_year, 'value', backward=lambda v: f'Année de fin : {int(v) + 2}' if v is not None else '')
-            current_value = database_controller.promotion.year_fee if database_controller.promotion else 0 
+            current_value = self.session_state.promotion.year_fee if self.session_state.promotion else 0 
             self.year_fee = required_label(ui.number('Tarif annuel', validation=required_rule, value=current_value, min=0, step=0.50, format='%.2f', suffix='€').classes('w-full'),"Tarif annuel")
             with ui.row().classes('justify-end w-full'):
                 ui.button('Annuler', on_click=self.dialogue.close).props('flat')
@@ -47,7 +50,7 @@ class PromotionTab:
 
     @ui.refreshable
     def _display_header(self):
-        promotion = database_controller.promotion
+        promotion = self.session_state.promotion
         if promotion:
             with ui.column().classes('gap-1'):
                 with ui.row().classes('items-center gap-3'):
@@ -70,15 +73,17 @@ class PromotionTab:
             return
 
         promotion = Promotion(int(self.new_promotion_year.value), self.year_fee.value, None)
-        database_controller.promotion = database_controller.save_promotion(promotion)
+        db_promotion = database_controller.save_promotion(promotion)
 
         self._refresh_choices() 
         self.dialogue.close()
         self._display_header.refresh()
         ui.notify(f'Nouvelle promotion créée : {self.new_promotion_year.value}', type='positive')
+        ui.navigate.to(f'/promotion/{db_promotion.id}')
 
-    def _select_promotion(self, year):
-        database_controller.promotion = database_controller.load_promotion(year)
+    def _select_promotion(self, year):        
+        promotion = database_controller.load_promotion(year)
         self.choix.value = None
         self._display_header.refresh()
+        ui.navigate.to(f'/promotion/{promotion.id}')
 

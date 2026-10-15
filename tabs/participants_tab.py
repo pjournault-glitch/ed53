@@ -6,6 +6,7 @@ from nicegui import ui
 from controller.database_controller import database_controller
 from model.model import Participant
 from tabs.abstract_person_tab import AbstractPersonsTab
+from model.session_state import SessionState
 
 SENDER_SETTER = """params => {
     const label = params.newValue ?? '';
@@ -18,7 +19,8 @@ def _cle_tri(texte: str) -> str:
     return ''.join(c for c in sans_accents if unicodedata.category(c) != 'Mn').casefold()
 
 class ParticipantsTab(AbstractPersonsTab):
-    def __init__(self):
+    def __init__(self, session_state:SessionState):
+        self.session_state = session_state
         database_controller.subscribe_promotion_changed(self.reload)
         database_controller.subscribe_senders_changed(self.reload)
 
@@ -32,9 +34,8 @@ class ParticipantsTab(AbstractPersonsTab):
             self._promotion_label = ui.label(self._promotion_text()).classes('text-subtitle1 text-bold')            
         super().__init__()
 
-    @staticmethod
-    def _promotion_text() -> str:
-        year = database_controller.promotion.year if database_controller.promotion else None        
+    def _promotion_text(self) -> str:
+        year = self.session_state.promotion.year if self.session_state.promotion else None        
         return f'Promotion ({year}-{year + 2})' if year else ''        
 
     def _get_empty_line(self):
@@ -70,7 +71,7 @@ class ParticipantsTab(AbstractPersonsTab):
 
 
     def _insert(self, line: dict) -> int:
-        return database_controller.add_participant(database_controller.promotion, line)
+        return database_controller.add_participant(self.session_state.promotion, line)
 
     def _update(self, line: dict):
         database_controller.update_participant(line)
@@ -79,7 +80,7 @@ class ParticipantsTab(AbstractPersonsTab):
         database_controller.delete_participants(ids)  
 
     def _get_row_data(self):
-        return self._grid_lines(database_controller.get_participants(database_controller.promotion) if database_controller.promotion else [])
+        return self._grid_lines(database_controller.get_participants(self.session_state.promotion) if self.session_state.promotion else [])
 
     def _get_required_fields(self) -> set[str]:
         return {'firstname', 'name', 'street', 'zip', 'city', 'phone'}    
@@ -99,7 +100,7 @@ class ParticipantsTab(AbstractPersonsTab):
     def _sender_choices(self) -> list[str]:
         return sorted((s.label for s in database_controller.get_senders()), key=_cle_tri)
 
-    def reload(self):
+    def reload(self, origin, op, payload):
         choices = self._sender_choices()
         for col in self.grille.options['columnDefs']:
             if col.get('field') == 'sender_label':
@@ -108,7 +109,7 @@ class ParticipantsTab(AbstractPersonsTab):
         self._filter_sender.set_options(choices)
         if self._filter_sender.value not in choices:
             self._filter_sender.value = None
-        self.grille.options['rowData'] = self._grid_lines(database_controller.get_participants(database_controller.promotion))
+        self.grille.options['rowData'] = self._grid_lines(database_controller.get_participants(self.session_state.promotion))
         self._promotion_label.text = self._promotion_text()
         self.grille.update()
 
