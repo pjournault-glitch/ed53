@@ -6,11 +6,14 @@ import uuid
 from nicegui import ui, run
 import io
 from openpyxl import load_workbook
+from model.session_state import SessionState
 
 logger = logging.getLogger('app')
 
 class AbstractPersonsTab:
-    def __init__(self):
+    def __init__(self, session_state:SessionState, notifier):
+        self.session_state = session_state
+        self._notifier = notifier
         self._upload = ui.upload(auto_upload=True,max_files=1,
             on_begin_upload=lambda e: self._set_buttons_enabled(False),
             on_upload=self._handle_upload).props('accept=.xlsx,.xlsm').classes('hidden')
@@ -49,7 +52,6 @@ class AbstractPersonsTab:
                 ui.button(icon='sym_o_refresh', on_click=self._reload).props('flat round dense').tooltip('Recharger les données')
             self._count_label = ui.label().classes('text-grey-7')
         self._update_count_local()
-        self._notifier = None
 
     async def _reload(self):
         try:
@@ -187,7 +189,7 @@ class AbstractPersonsTab:
                     line['id'] = self._insert(line)
 
             await run.io_bound(insert_all)
-            self._notifier(self.session_state.session_id, 'add', lines)
+            self._notifier(self.session_state, 'add', lines)
 
             # Ajout des nouvelles lignes à la grille, sans toucher aux existantes
             self.grille.run_grid_method('applyTransaction', {'add': lines})
@@ -243,7 +245,7 @@ class AbstractPersonsTab:
     async def _add_line(self):
         line = {**self._get_empty_line()}
         line['id'] = self._insert(line)               # id fourni par la base
-        self._notifier(self.session_state.session_id, 'add', [line])
+        self._notifier(self.session_state, 'add', [line])
         self.grille.run_grid_method('applyTransaction', {'add': [line]})
 
     @staticmethod
@@ -277,7 +279,7 @@ class AbstractPersonsTab:
 
         ids = {r['id'] for r in selection}
         self._delete(ids)
-        self._notifier(self.session_state.session_id, 'delete', selection)
+        self._notifier(self.session_state, 'delete', selection)
         lines = await self.grille.get_client_data()
         self.grille.options['rowData'] = [l for l in lines if l['id'] not in ids]
         self.grille.update()
@@ -295,4 +297,4 @@ class AbstractPersonsTab:
     async def _save(self, e):
         line = e.args['data']
         self._update(line)
-        self._notifier(self.session_state.session_id, 'update', [line])
+        self._notifier(self.session_state, 'update', [line])

@@ -127,9 +127,10 @@ class MainWindow:
                 ui.tab('info', label='Configuration', icon='settings').style('font-size: 18px !important')
                 ui.tab('apropos', label='A PROPOS', icon='info').style('font-size: 18px !important')
             self._update_promotion_information()
-            self._on_animators_changed(self.session_state.session_id)
-            self._on_senders_changed(self.session_state.session_id)
-            self._on_adressees_changed(self.session_state.session_id)
+            self._on_animators_changed(self.session_state)
+            self._on_senders_changed(self.session_state)
+            self._on_adressees_changed(self.session_state)
+            self._on_participants_changed(self.session_state)
 
     def _subscribe_changes(self):
         """Inscriptions aux changements"""
@@ -137,49 +138,52 @@ class MainWindow:
         database_controller.subscribe_addressees_changed(self._on_adressees_changed)
         database_controller.subscribe_animators_changed(self._on_animators_changed)
         database_controller.subscribe_promotion_changed(self._update_promotion_information)
-        database_controller.subscribe_participants_changed(self._update_participants_badge)
+        database_controller.subscribe_participants_changed(self._on_participants_changed)
 
     def _unsubscribe_changes(self):
         database_controller.unsubscribe_senders_changed(self._on_senders_changed)
         database_controller.unsubscribe_addressees_changed(self._on_adressees_changed)
         database_controller.unsubscribe_animators_changed(self._on_animators_changed)
+        database_controller.unsubscribe_promotion_changed(self._update_promotion_information)
+        database_controller.unsubscribe_participants_changed(self._on_participants_changed)
 
-        # TODO : Implémenter cette méthode
-
-    def _on_senders_changed(self, origin, op=None, payload=None):
+    def _on_senders_changed(self, origin:SessionState, op=None, payload=None):
         """Mise à jour des envoyants - par soi-même ou par une autre sessions"""
         self._senders_badge.text = str(len(database_controller.get_senders()))
-        if origin == self.session_state.session_id:
+        if origin.session_id == self.session_state.session_id:
             return
         self._senders_tab.apply_remote_change(op, payload)        
 
-    def _on_adressees_changed(self, origin, op=None, payload=None):
+    def _on_adressees_changed(self, origin:SessionState, op=None, payload=None):
         """Mise à jour du nombre de destinataires dans le badge de l'onglet destinataires"""
         self._addressees_badge.text = str(len(database_controller.get_addressees()))
-        if origin == self.session_state.session_id:
+        if origin.session_id == self.session_state.session_id:
             return
         self._addressees_tab.apply_remote_change(op, payload)        
 
-    def _on_animators_changed(self, origin, op=None, payload=None):
+    def _on_animators_changed(self, origin:SessionState, op=None, payload=None):
         """Mise à jour du nombre d'animateurs dans le badge de l'onglet animateurs"""
         self._animators_badge.text = str(len(database_controller.get_animators()))
-        if origin == self.session_state.session_id:
+        if origin.session_id == self.session_state.session_id:
             return
         self._animators_tab.apply_remote_change(op, payload)        
 
     def _update_promotion_information(self):
-        """Mise à jour du nombre d'animateurs dans le badge de l'onglet animateurs"""
+        """Mise à jour de l'onglet des informations de promotion"""
         promotion = self.session_state.promotion
         if promotion:
             self._promotion_label.text = f"Promotion {promotion.year} - {promotion.year + 2}"
         else:
             self._promotion_label.text = f"Gestion des promotions"
-        self._update_participants_badge()
+        self._on_participants_changed(self.session_state)
 
-    def _update_participants_badge(self):
+    def _on_participants_changed(self, origin:SessionState, op=None, payload=None):
         promotion = self.session_state.promotion
         n = len(promotion.participants) if promotion else 0
         self._participants_badge.text = str(n)
+        if origin.session_id == self.session_state.session_id or origin.promotion_id != promotion.id:
+            return
+        self._participants_tab.apply_remote_change(op, payload)          
 
     def _show_participants(self, label: str):
         """Basculer vers l'onglet des participants (à partir de l'onglet des envoyants) en filtrant sur l'envoyant"""

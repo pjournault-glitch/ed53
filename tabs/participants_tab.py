@@ -20,10 +20,8 @@ def _cle_tri(texte: str) -> str:
 
 class ParticipantsTab(AbstractPersonsTab):
     def __init__(self, session_state:SessionState):
-        self.session_state = session_state
         database_controller.subscribe_promotion_changed(self.reload)
         database_controller.subscribe_senders_changed(self.reload)
-
         with ui.row().classes('w-full items-center justify-between no-wrap'):
             self._filter_sender = ui.select(
                 options=self._sender_choices(),
@@ -31,11 +29,11 @@ class ParticipantsTab(AbstractPersonsTab):
                 clearable=True,
                 on_change=self._apply_sender_filter,
             ).classes('w-128')
-            self._promotion_label = ui.label(self._promotion_text()).classes('text-subtitle1 text-bold')            
-        super().__init__()
+            self._promotion_label = ui.label(self._promotion_text(session_state)).classes('text-subtitle1 text-bold')            
+        super().__init__(session_state, database_controller.notify_participants_changed)
 
-    def _promotion_text(self) -> str:
-        year = self.session_state.promotion.year if self.session_state.promotion else None        
+    def _promotion_text(self, session_state) -> str:
+        year = session_state.promotion.year if session_state.promotion else None        
         return f'Promotion ({year}-{year + 2})' if year else ''        
 
     def _get_empty_line(self):

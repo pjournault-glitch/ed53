@@ -19,8 +19,8 @@ class DatabaseController:
         self._senders_callbacks = []
         self._addressees_callbacks = []
         self._animators_callbacks = []
-        self._on_promotion_changed = []
-        self._on_participants_changed = []
+        self._promotion_callbacks = []
+        self._participants_callbacks = []
 
     def subscribe_information_changed(self, callback):
         self._information_callbacks.append(callback)
@@ -38,38 +38,34 @@ class DatabaseController:
           
     """Permet de s'abonner aux changements de participants"""
     def subscribe_participants_changed(self, callback) -> None:
-        self._on_participants_changed.append(callback)
+        self._participants_callbacks.append(callback)
+
+    """Permet de se désabonner aux changements de participants"""
+    def unsubscribe_participants_changed(self, callback) -> None:
+        self._participants_callbacks.remove(callback)
 
     """Notifie les abonnés aux changement de participants"""
-    def _notify_participants_changed(self) -> None:
-        for callback in self._on_participants_changed:
+    def notify_participants_changed(self, origin: str, op: str, payload):
+        for callback in self._participants_callbacks:
             try:
-                callback()
+                callback(origin, op, payload)
             except Exception:
                 logger.exception('Callback de notification en échec')  
 
-    """Renvoi la promotion en cours d'utilisation"""
-    @property
-    def promotion(self) -> Promotion:
-        return self._promotion
-
-    """Choisi la promotion en cours et notifie les abonnés à ce changement"""
-    @promotion.setter
-    def promotion(self, value:Promotion) -> None:
-        self._promotion = value
-        self._notify_promotion_changed()
-        self._notify_participants_changed()
+    # Promotion ---------------------------------------------------------------------------------------------------------
 
     """Permet de s'abonner aux changements de promotion en cours"""
     def subscribe_promotion_changed(self, callback) -> None:
-        self._on_promotion_changed.append(callback)
+        self._promotion_callbacks.append(callback)
+
+    """Permet de s'abonner aux changements de promotion en cours"""
+    def unsubscribe_promotion_changed(self, callback) -> None:
+        self._promotion_callbacks.remove(callback)
 
     """Notifie les abonnés aux changement de promotion en cours"""
     def _notify_promotion_changed(self) -> None:
-        for callback in self._on_promotion_changed:
+        for callback in self._promotion_callbacks:
             callback()
-
-    # Promotion ---------------------------------------------------------------------------------------------------------
 
     """Renvoi la liste des promotions existantes"""
     def existing_promotions(self) -> list[int]:
@@ -145,18 +141,15 @@ class DatabaseController:
             p = DbPersonne(type="participant", promotion_id=promotion.id, **{k: v for k, v in data.items() if k in PERSON_FIELDS["participant"]})
             session.add(p)
             session.commit()
-            self._promotion = self.load_promotion(self.promotion.year)
             return p.id
 
     """Met à jour un participant"""
     def update_participant(self, data: dict) -> None:
         self._update_person("participant", data)
-        self._promotion = self.load_promotion(self.promotion.year)
 
     """Supprime des participants"""
     def delete_participants(self, ids: set[int]) -> None:
         self._delete_persons(ids)
-        self._promotion = self.load_promotion(self.promotion.year)
 
     # Personnes ------------------------------------------------------------------------------------------------------------
 

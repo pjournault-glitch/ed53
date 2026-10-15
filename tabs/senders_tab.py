@@ -10,11 +10,9 @@ from tabs.abstract_person_tab import AbstractPersonsTab
 class SendersTab(AbstractPersonsTab):
 
     def __init__(self, session_state:SessionState, on_show_participants=None):
-        self.session_state = session_state
         self._on_show_participants = on_show_participants
-        super().__init__()
+        super().__init__(session_state, database_controller.notify_senders_changed)
         self.grille.on('cellClicked', self._on_cell_clicked)
-        self._notifier = database_controller.notify_senders_changed
 
     def _get_empty_line(self):
         return {
