@@ -3,24 +3,28 @@ import logging
 import os
 import secrets
 
+from dotenv import load_dotenv
+
+load_dotenv(override=False)
+
+from util.logging import install_asyncio_handler, log_user_action, setup_logging
+
+setup_logging(getattr(logging, os.getenv('LOG_LEVEL', 'INFO').upper(), logging.INFO))
+
 from fastapi import HTTPException
 from nicegui import app, ui
-from dotenv import load_dotenv
 
 from controller.database_controller import database_controller
 from main_window import MainWindow
 from model.session_state import SessionState
 from tabs.promotion_tab import PromotionTab
-from util.logging import install_asyncio_handler, log_user_action, setup_logging
 from util.util import required_label
 
 
-setup_logging(getattr(logging, os.getenv('LOG_LEVEL', 'INFO').upper(), logging.INFO))
 PASSWORD_EDIT = os.environ['APP_PASSWORD_EDIT']
 PASSWORD_READ = os.environ['APP_PASSWORD_READ']
 assert PASSWORD_EDIT != PASSWORD_READ, 'Les deux mots de passe doivent être différents'
 
-load_dotenv(override=False)
 logger = logging.getLogger('app')
 
 ui.add_css('.q-tab__label { font-size: 14px; letter-spacing: .0892em; }', shared=True)
