@@ -144,6 +144,9 @@ class InformationTab:
             (self.badge_nb_horizontal, 'nb_horizontal', int),
             (self.badge_nb_vertical, 'nb_vertical', int),
         ]        
+        if not self.session_state.can_edit:
+            for field, _ in self._mapping:
+                field.set_enabled(False)
         self._info = None
         self.reload()
         self._focused = None                      # champ en cours de saisie dans cette session
@@ -165,12 +168,27 @@ class InformationTab:
         self.reload(keep=self._focused)
 
     async def autosave(self, field):
-        if not self.session_state.can_edit: 
-            return
         if self._focused is field:
             self._focused = None
         if not field.validate():
             return
+
+        if not self.session_state.can_edit:
+            for tag_name, mapping, build_tag in (
+                ('mail_tag', self._mail_tag_mapping, self._build_mail_tag),
+                ('file_tag', self._file_tag_mapping, self._build_file_tag),
+                ('badge_tag', self._badge_tag_mapping, self._build_badge_tag),
+            ):
+                if any(tag_field is field for tag_field, _, _ in mapping):
+                    if not all(self._is_ok(tag_field) and self._num(tag_field) is not None
+                               for tag_field, _, _ in mapping):
+                        return
+                    await run.io_bound(database_controller.save_information_tag, tag_name, build_tag())
+                    log_user_action(self.session_state.name, 'modification', tag_name)
+                    self._notifier(self.session_state.session_id, 'update', None)
+                    return
+            return
+
         if not self._is_complete():
             return
         info = self._build_information()          # lecture de l'interface avant l'await

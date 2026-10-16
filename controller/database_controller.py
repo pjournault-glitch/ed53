@@ -2,7 +2,7 @@ import logging
 
 from sqlalchemy import delete, func, select
 from controller.database import SessionLocal
-from model.model import Addressee, Animator, Information, Participant, Promotion, Sender
+from model.model import Addressee, Animator, Information, Participant, Promotion, Sender, Tag
 from model.database_model import DbInformation, DbPersonne, DbPromotion
 
 PERSON_FIELDS = {"sender": {"title", "firstname", "name", "street", "zip", "city", "phone", "mail", "organisation"},
@@ -302,6 +302,19 @@ class DatabaseController:
     def load_information(self) -> Information:
         with SessionLocal() as session:
             db_information = session.query(DbInformation).first()
+            if db_information is None:
+                return Information(
+                    name='',
+                    addressee='',
+                    street='',
+                    bp='',
+                    zip='',
+                    city='',
+                    phone='',
+                    mail='',
+                    bic='',
+                    iban='',
+                )
             return db_information.to_entity()
 
     """Enregistre les informations générales"""
@@ -314,6 +327,27 @@ class DatabaseController:
                 db_information = DbInformation()
                 db_information.from_entity(information)
                 session.add(db_information)
+            session.commit()
+
+    """Enregistre uniquement la configuration d'un type d'étiquette."""
+    def save_information_tag(self, tag_name: str, tag: Tag) -> None:
+        if tag_name not in {'mail_tag', 'file_tag', 'badge_tag'}:
+            raise ValueError(f'Type de tag inconnu : {tag_name}')
+
+        with SessionLocal() as session:
+            db_information = session.query(DbInformation).first()
+            if db_information is None:
+                db_information = DbInformation(
+                    name='',
+                    addressee='',
+                    street='',
+                    zip='',
+                    city='',
+                    bic='',
+                    iban='',
+                )
+                session.add(db_information)
+            setattr(db_information, tag_name, tag.to_dict())
             session.commit()
 
 database_controller = DatabaseController()

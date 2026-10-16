@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from controller.database_controller import database_controller
 from main_window import MainWindow
 from model.session_state import SessionState
+from tabs.promotion_tab import PromotionTab
 from util.logging import install_asyncio_handler, log_user_action, setup_logging
 from util.util import required_label
 
@@ -87,6 +88,23 @@ def index():
         return ui.navigate.to('/login')
     latest = database_controller.get_latest_promotion_id()
     ui.navigate.to(f'/promotion/{latest}' if latest else '/promotion/new')    
+
+@ui.page('/promotion/new')
+def new_promotion_page():
+    if not app.storage.user.get('authenticated'):
+        return ui.navigate.to('/login')
+    if app.storage.user.get('role') != 'edit':
+        with ui.card().classes('absolute-center'):
+            ui.label('Aucune promotion n’est encore créée.')
+            ui.label('Connectez-vous avec le mot de passe de modification pour créer la première.')
+            ui.button('Retour à la connexion', on_click=lambda: ui.navigate.to('/login'))
+        return
+    PromotionTab(SessionState(
+        None,
+        ui.context.client.id,
+        app.storage.user.get('name') or '',
+        can_edit=True,
+    ))
 
 @ui.page('/promotion/{promotion_id}')
 def promotion_page(promotion_id: int):
