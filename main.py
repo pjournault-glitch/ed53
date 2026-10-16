@@ -2,6 +2,7 @@
 import logging
 import os
 import secrets
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -76,13 +77,20 @@ def login():
         log_user_action(name, 'connexion', 'application', f'rôle={role}')
         ui.navigate.to('/')
 
-    with ui.card().classes('absolute-center'):
+    with ui.card().classes('absolute-center w-96 max-w-[100vw]'):
+        with ui.column().classes('w-full items-center gap-2 mb-4'):
+            ui.image(str(Path(__file__).resolve().parent / 'assets' / 'logo.png')).classes('w-24')
+            ui.label('École du diocèse de Laval').classes('text-h6 text-center')
+            ui.label(
+                'Merci de saisir votre nom et le mot de passe qui vous a été fourni '
+                'pour vous connecter à l’application.'
+            ).classes('text-center text-grey-7')
         nom = required_label(
             ui.input('Votre nom', validation={'Ce champ est obligatoire': lambda value: bool(value and value.strip())}),
             'Votre nom',
-        ).on('keydown.enter', try_login)
+        ).classes('w-full').on('keydown.enter', try_login)
         password = ui.input('Mot de passe', password=True, password_toggle_button=True).on('keydown.enter', try_login)
-        password = required_label(password, 'Mot de passe')
+        password = required_label(password, 'Mot de passe').classes('w-full')
         password.props('required')
         ui.button('Connexion', on_click=try_login)
 

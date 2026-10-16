@@ -110,7 +110,7 @@ class DatabaseController:
             return db_promotion.to_entity()
 
     """Charge une promotion, définie par son année"""
-    def load_promotion(self, year: int) -> Promotion:
+    def get_promotion(self, year: int) -> Promotion:
         with SessionLocal() as session:
             db_promotion = session.scalars(select(DbPromotion).where(DbPromotion.year == year)).first()
             return db_promotion.to_entity() if db_promotion else None
@@ -299,7 +299,7 @@ class DatabaseController:
     # Informations --------------------------------------------------------------------------------------------------
 
     """Charge les informations générales"""
-    def load_information(self) -> Information:
+    def get_information(self) -> Information:
         with SessionLocal() as session:
             db_information = session.query(DbInformation).first()
             if db_information is None:

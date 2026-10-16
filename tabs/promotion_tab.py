@@ -91,7 +91,7 @@ class PromotionTab:
         ui.navigate.to(f'/promotion/{db_promotion.id}')
 
     def _select_promotion(self, year):        
-        promotion = database_controller.load_promotion(year)
+        promotion = database_controller.get_promotion(year)
         self.choix.value = None
         self._display_header.refresh()
         ui.navigate.to(f'/promotion/{promotion.id}')

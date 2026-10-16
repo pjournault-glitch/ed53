@@ -282,7 +282,7 @@ class InformationTab:
         return True                  
 
     def reload(self, keep=None):
-        self._info = database_controller.load_information()
+        self._info = database_controller.get_information()
         values = [(field, getattr(self._info, attr, '') or '') for field, attr in self._mapping]
         for tag_name, mapping in (('mail_tag', self._mail_tag_mapping),
                                 ('file_tag', self._file_tag_mapping),

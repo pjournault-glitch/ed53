@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 from util.util import required, to_display, valid_date
 from nicegui import app, ui
 from controller.database_controller import database_controller
@@ -98,6 +99,10 @@ class MainWindow:
         ]
 
         with ui.left_drawer().props('width=320 bordered') as self.left_drawer:
+            with ui.row().classes('w-full items-center gap-3 px-4 py-3'):
+                ui.image(str(Path(__file__).resolve().parent / 'assets' / 'logo.png')).classes('w-10')
+                ui.label(database_controller.get_information().name).classes('text-subtitle1 text-bold')
+            ui.separator()
             ui.item_label('Documents par année').props('header')
             with ui.column().classes('w-full h-full no-wrap gap-0'):
                 for icon_name, label, handler in per_year:
@@ -237,7 +242,7 @@ class MainWindow:
     def _generate_attendance(self, year):
         """Génère les feuilles d'émargement"""
         promotion = self.session_state.promotion
-        information = database_controller.load_information()
+        information = database_controller.get_information()
         filename = f"emargement_{promotion.year + year-1}_{promotion.year + year}.pdf"
         try:
             with log_generation(self.session_state.name, 'PDF', filename):
@@ -254,7 +259,7 @@ class MainWindow:
         filename = f"repas_{promotion.year + year-1}_{promotion.year + year}.pdf"
         try:
             with log_generation(self.session_state.name, 'PDF', filename):
-                information = database_controller.load_information()
+                information = database_controller.get_information()
                 pdf = MealController(promotion.participants, "Règlement des repas",
                     f"{information.name} {promotion.year}-{promotion.year + 2} - Année {promotion.year + year-1}-{promotion.year + year}").generate()
                 ui.download(pdf, filename)
@@ -266,7 +271,7 @@ class MainWindow:
         promotion = self.session_state.promotion
         controller = InvoiceController(
             promotion.participants, database_controller.get_senders(),
-            database_controller.load_information(),
+            database_controller.get_information(),
             fee=promotion.year_fee,
             logo_path=os.getenv('INVOICE_LOGO', 'assets/logo.png'),
             school_year=f'{promotion.year}-{promotion.year + 2}',
@@ -321,7 +326,7 @@ class MainWindow:
         try:        
             promotion = self.session_state.promotion
             persons = sorted(promotion.participants + database_controller.get_addressees(), key=lambda p: p.name)
-            information = database_controller.load_information()
+            information = database_controller.get_information()
             filename = f"courrier_{promotion.year}_{promotion.year + 2}.pdf"
             with log_generation(self.session_state.name, 'PDF', filename):
                 pdf = MailLabelController(persons, information.mail_tag).generate()
@@ -336,7 +341,7 @@ class MainWindow:
             return
         promotion = self.session_state.promotion
         persons = promotion.participants + database_controller.get_animators()
-        information = database_controller.load_information()
+        information = database_controller.get_information()
         filename = "dossier.pdf"
         try:
             with log_generation(self.session_state.name, 'PDF', filename):
@@ -389,7 +394,7 @@ class MainWindow:
         """Génère les badges"""
         try:
             promotion = self.session_state.promotion
-            tag = database_controller.load_information().badge_tag
+            tag = database_controller.get_information().badge_tag
             filename = f"badges_{promotion.year}_{promotion.year + 2}.pdf"
             with log_generation(self.session_state.name, 'PDF', filename):
                 pdf = BadgeController(
