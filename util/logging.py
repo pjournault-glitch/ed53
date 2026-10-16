@@ -1,31 +1,25 @@
 import asyncio
-import faulthandler
+from contextlib import contextmanager
 import logging
 import sys
 import threading
-from logging.handlers import RotatingFileHandler
-from pathlib import Path
+from collections.abc import Iterator
 
 _FORMAT = '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
-_crash_file = None    # doit rester ouvert tant que le programme tourne
 
 
-def setup_logging(log_dir: Path, level: int = logging.INFO) -> Path:
-    """Configure le journal. À appeler une seule fois, au tout début du programme."""
-    global _crash_file
-    log_dir.mkdir(parents=True, exist_ok=True)
-    log_file = log_dir / 'application.log'
-
+def setup_logging(level: int = logging.INFO) -> None:
+    """Configure le journal sur la console. À appeler une seule fois au démarrage."""
     root = logging.getLogger()
-    if any(isinstance(h, RotatingFileHandler) for h in root.handlers):
-        return log_file                                   # déjà configuré
+    if any(getattr(handler, '_ed_console_handler', False) for handler in root.handlers):
+        return
 
     formatter = logging.Formatter(_FORMAT)
-    handlers: list[logging.Handler] = [
-        RotatingFileHandler(log_file, maxBytes=1_000_000, backupCount=5, encoding='utf-8')
-    ]
-    if sys.stderr:                                         # absent quand lancé sans console (pythonw, .exe sans console)
-        handlers.append(logging.StreamHandler())
+    handlers: list[logging.Handler] = []
+    if sys.stderr:
+        console_handler = logging.StreamHandler(sys.stderr)
+        console_handler._ed_console_handler = True
+        handlers.append(console_handler)
     for handler in handlers:
         handler.setFormatter(formatter)
 
@@ -54,12 +48,39 @@ def setup_logging(log_dir: Path, level: int = logging.INFO) -> Path:
     threading.excepthook = lambda a: logger.critical(
         'Exception dans un thread', exc_info=(a.exc_type, a.exc_value, a.exc_traceback))
 
-    # plantages brutaux de l'interpréteur (très rares) : trace écrite dans un fichier séparé
-    _crash_file = open(log_dir / 'crash.log', 'a', encoding='utf-8')
-    faulthandler.enable(file=_crash_file)
+    if sys.stderr:
+        import faulthandler
+        faulthandler.enable(file=sys.stderr)
 
     logger.info('Journal démarré (Python %s)', sys.version.split()[0])
-    return log_file
+
+
+def log_user_action(user: str, action: str, entity: str, details: str = '') -> None:
+    """Écrit une trace d'audit sans inclure les valeurs des données modifiées."""
+    safe_user = user.replace('\r', ' ').replace('\n', ' ').strip()
+    logging.getLogger('app').info(
+        'AUDIT utilisateur=%s action=%s entité=%s%s',
+        safe_user,
+        action,
+        entity,
+        f' {details}' if details else '',
+    )
+
+
+@contextmanager
+def log_generation(user: str, file_format: str, filename: str) -> Iterator[None]:
+    """Journalise le début et la fin d'une génération de document."""
+    logger = logging.getLogger('app')
+    user = user.replace('\r', ' ').replace('\n', ' ').strip()
+    details = 'utilisateur=%s format=%s fichier=%s'
+    logger.info('Génération début ' + details, user, file_format, filename)
+    try:
+        yield
+    except Exception:
+        logger.info('Génération fin résultat=échec ' + details, user, file_format, filename)
+        raise
+    else:
+        logger.info('Génération fin résultat=succès ' + details, user, file_format, filename)
 
 
 def install_asyncio_handler(logger: logging.Logger) -> None:

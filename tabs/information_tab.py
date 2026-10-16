@@ -3,6 +3,7 @@ from nicegui import run, ui
 from controller.database_controller import database_controller
 from model.model import Information, Tag
 from util.util import required_label, required_rule
+from util.logging import log_user_action
 from model.session_state import SessionState
 
 
@@ -155,12 +156,17 @@ class InformationTab:
             field.on('focus', lambda e, f=field: setattr(self, '_focused', f))
             field.on('blur', lambda e, f=field: self.autosave(f))
 
+    def unsubscribe(self) -> None:
+        database_controller.unsubscribe_information_changed(self._on_information_changed)
+
     def _on_information_changed(self, origin, op, payload):
         if origin == self.session_state.session_id:
             return
         self.reload(keep=self._focused)
 
     async def autosave(self, field):
+        if not self.session_state.can_edit: 
+            return
         if self._focused is field:
             self._focused = None
         if not field.validate():
@@ -169,6 +175,7 @@ class InformationTab:
             return
         info = self._build_information()          # lecture de l'interface avant l'await
         await run.io_bound(database_controller.save_information, info)
+        log_user_action(self.session_state.name, 'modification', 'informations générales')
         self._notifier(self.session_state.session_id, 'update', None)
 
     def _is_complete(self) -> bool:

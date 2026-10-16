@@ -4,6 +4,7 @@ import logging
 import os
 import uuid
 from nicegui import ui, run
+from util.logging import log_user_action
 import io
 from openpyxl import load_workbook
 from model.session_state import SessionState
@@ -42,17 +43,37 @@ class AbstractPersonsTab:
         self.grille.on('modelUpdated', self._update_count, args=['type'])
         self.grille.on('cellValueChanged', self._update_count, args=['type'])
         self.grille.on('firstDataRendered', self._update_count)     
-        with ui.row().classes('w-full items-center justify-between no-wrap'):
-            with ui.row():
-                self._btn_add = ui.button(f"Ajouter une ligne", on_click=self._add_line, icon='person_add')
-                if os.getenv("SHOW_IMPORT").lower() == "yes":
-                    self._btn_import = ui.button("Importer un fichier excel", on_click=lambda: self._upload.run_method('pickFiles'), icon='upload_file')
-                self._btn_remove = ui.button('Supprimer la sélection', on_click=self._remove_selection, color='negative', icon='delete')
-                ui.button(icon='sym_o_fit_width', on_click=lambda: self.grille.run_grid_method('autoSizeAllColumns')).props('flat round dense').tooltip('Ajuster la largeur des colonnes')
-                ui.button(icon='sym_o_refresh', on_click=self._reload).props('flat round dense').tooltip('Recharger les données')
-            self._count_label = ui.label().classes('text-grey-7')
-        self._update_count_local()
 
+        with ui.row().classes('w-full items-center justify-between'):
+            with ui.row().classes('items-center gap-1') as self._actions:
+                self._action_buttons = []
+                self._btn_add = ui.button('Ajouter', icon='person_add', on_click=self._add_line).props('outline no-caps')
+                self._action_buttons.append(self._btn_add)
+                if os.getenv("SHOW_IMPORT", "").lower() == "yes":
+                    self._btn_import = ui.button('Importer', icon='upload_file', on_click=lambda: self._upload.run_method('pickFiles')).props('outline no-caps')
+                    self._action_buttons.append(self._btn_import)
+                    self._btn_import.set_visibility(self.session_state.can_edit)
+                self._btn_remove = ui.button('Supprimer', icon='delete', color='negative',on_click=self._remove_selection).props('outline no-caps')
+                self._action_buttons.append(self._btn_remove)                
+            
+            with ui.row().classes('items-center gap-1 no-wrap'):
+                with ui.button_group().props('outline no-caps'):
+                    ui.button(icon='sym_o_fit_width', color='grey-7', on_click=lambda: self.grille.run_grid_method('autoSizeAllColumns')).props('outline no-caps dense size=sm').tooltip('Ajuster la largeur des colonnes')
+                    ui.button(icon='sym_o_refresh', color='grey-7', on_click=self._reload).props('outline no-caps dense size=sm').tooltip('Recharger les données')
+                ui.separator().props('vertical').classes('mx-2')
+                self._count_label = ui.label().classes('text-grey-7')        
+
+        for b in (self._btn_add, self._btn_remove):
+            b.set_visibility(self.session_state.can_edit)
+        self._update_count_local()
+    
+    def _require_edit(self) -> bool:
+        """Vérifier si une modification est autorisée"""
+        if self.session_state.can_edit:
+            return True
+        ui.notify('Mode consultation : modification impossible', type='warning')
+        return False
+        
     async def _reload(self):
         try:
             rows = self._get_row_data()
@@ -119,8 +140,9 @@ class AbstractPersonsTab:
 
     def _build_columns(self) -> list:
         columns = self._get_columns_def()
+        self._data_fields = [c['field'] for c in columns if c.get('editable') and c.get('field')]
         required = self._get_required_fields()
-        editable = [c['field'] for c in columns if c.get('editable') and c.get('field')]
+        editable = self._editable_fields()
         fields_js = json.dumps(editable)
         # rouge si la cellule est vide alors qu'un autre champ de la ligne est renseigné
         rule = ("!(x ?? '').toString().trim() && "
@@ -128,7 +150,13 @@ class AbstractPersonsTab:
         for col in columns:
             if col.get('field') in required:
                 col['cellClassRules'] = {**col.get('cellClassRules', {}), 'bg-red-300': rule}
+        if not self.session_state.can_edit:
+            for col in columns:
+                col['editable'] = False
         return columns
+
+    def _editable_fields(self) -> list[str]:
+        return self._data_fields    
 
     def _insert(self, line: dict) -> int:
         raise NotImplementedError("La méthode _insert doit être implémentée dans la classe fille")   
@@ -187,6 +215,12 @@ class AbstractPersonsTab:
             def insert_all():
                 for line in lines:
                     line['id'] = self._insert(line)
+                    log_user_action(
+                        self.session_state.name,
+                        'import',
+                        self._get_person_name(),
+                        f'id={line["id"]}',
+                    )
 
             await run.io_bound(insert_all)
             self._notifier(self.session_state, 'add', lines)
@@ -204,11 +238,23 @@ class AbstractPersonsTab:
         finally:
             self._upload.reset()
             self._set_buttons_enabled(True)
+
+    @staticmethod
+    def _count_header_rows(ws) -> int:
+        """Compte les lignes initiales dont la seconde colonne est vide."""
+        count = 0
+        for row in ws.iter_rows(min_col=2, max_col=2, values_only=True):
+            value = row[0]
+            if value is not None and str(value).strip():
+                break
+            count += 1
+        return count
     
     def _parse_excel(self, data: bytes) -> tuple[list[dict], list[str]]:
         wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
         ws = wb[self._get_import_tab_name()]
-        rows = ws.iter_rows(min_row=1 + int(os.getenv("IMPORT_HEADER_LINES")), values_only=True)
+
+        rows = ws.iter_rows(min_row=1 + self._count_header_rows(ws), values_only=True)
         headers = next(rows, None)
         if not headers:
             return [], []
@@ -245,6 +291,7 @@ class AbstractPersonsTab:
     async def _add_line(self):
         line = {**self._get_empty_line()}
         line['id'] = self._insert(line)               # id fourni par la base
+        log_user_action(self.session_state.name, 'création', self._get_person_name(), f'id={line["id"]}')
         self._notifier(self.session_state, 'add', [line])
         self.grille.run_grid_method('applyTransaction', {'add': [line]})
 
@@ -279,6 +326,12 @@ class AbstractPersonsTab:
 
         ids = {r['id'] for r in selection}
         self._delete(ids)
+        log_user_action(
+            self.session_state.name,
+            'suppression',
+            self._get_person_name(),
+            f'nombre={len(ids)} ids={sorted(ids)}',
+        )
         self._notifier(self.session_state, 'delete', selection)
         lines = await self.grille.get_client_data()
         self.grille.options['rowData'] = [l for l in lines if l['id'] not in ids]
@@ -295,6 +348,15 @@ class AbstractPersonsTab:
             self.grille.run_grid_method('applyTransaction', {'remove': payload})        
 
     async def _save(self, e):
+        if not self._require_edit():
+            return
         line = e.args['data']
         self._update(line)
+        fields = ','.join(sorted(key for key in line if key != 'id'))
+        log_user_action(
+            self.session_state.name,
+            'modification',
+            self._get_person_name(),
+            f'id={line["id"]} champs={fields}',
+        )
         self._notifier(self.session_state, 'update', [line])

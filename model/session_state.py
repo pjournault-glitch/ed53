@@ -1,13 +1,17 @@
+from dataclasses import dataclass
+
 from nicegui import ui
 
 from controller.database_controller import database_controller
 from model.model import Promotion
 
 
+@dataclass(frozen=True)
 class SessionState:
-    def __init__(self, promotion_id: int | None):
-        self.promotion_id = promotion_id
-        self.session_id = ui.context.client.id
+    promotion_id: int | None
+    session_id: str
+    name: str
+    can_edit: bool = False
 
     @property
     def promotion(self) -> Promotion | None:

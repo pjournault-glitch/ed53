@@ -4,6 +4,7 @@ from controller.database_controller import database_controller
 from model.model import Promotion
 from model.session_state import SessionState
 from util.util import required_label, required_rule
+from util.logging import log_user_action
 
 
 class PromotionTab:
@@ -21,14 +22,14 @@ class PromotionTab:
                 ui.space()
                 ui.button('Ouvrir', icon='folder_open',
                         on_click=lambda: self._select_promotion(self.choix.value)
-                        ).bind_enabled_from(self.choix, 'value', backward=bool)
+                        ).props('outline no-caps').bind_enabled_from(self.choix, 'value', backward=bool)
 
             # Nouvelle promotion
             with ui.card().classes('w-72'):
                 ui.label('Nouvelle promotion').classes('text-subtitle1 font-bold')
                 ui.label('Elle deviendra la promotion en cours.').classes('text-grey')
                 ui.space()
-                ui.button('Créer…', icon='add', on_click=self.dialogue.open)
+                ui.button('Créer…', icon='add', on_click=self.dialogue.open).props('outline no-caps')
 
     def _refresh_choices(self):
         self.choix.set_options(database_controller.existing_promotions(), value=None)
@@ -67,6 +68,8 @@ class PromotionTab:
             ui.separator().classes('my-4')
 
     def _create_new_promotion(self):
+        if not self.session_state.can_edit: 
+            return
         required_fields = [self.new_promotion_year, self.year_fee]
         if not all([f.validate() for f in required_fields]):
             ui.notify('Veuillez corriger les champs en erreur', type='negative')
@@ -74,6 +77,12 @@ class PromotionTab:
 
         promotion = Promotion(int(self.new_promotion_year.value), self.year_fee.value, None)
         db_promotion = database_controller.save_promotion(promotion)
+        log_user_action(
+            self.session_state.name,
+            'enregistrement',
+            'promotion',
+            f'année={promotion.year}',
+        )
 
         self._refresh_choices() 
         self.dialogue.close()
@@ -86,4 +95,3 @@ class PromotionTab:
         self.choix.value = None
         self._display_header.refresh()
         ui.navigate.to(f'/promotion/{promotion.id}')
-

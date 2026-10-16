@@ -108,8 +108,12 @@ class ParticipantsTab(AbstractPersonsTab):
         if self._filter_sender.value not in choices:
             self._filter_sender.value = None
         self.grille.options['rowData'] = self._grid_lines(database_controller.get_participants(self.session_state.promotion))
-        self._promotion_label.text = self._promotion_text()
+        self._promotion_label.text = self._promotion_text(self.session_state)
         self.grille.update()
+
+    def unsubscribe(self) -> None:
+        database_controller.unsubscribe_promotion_changed(self.reload)
+        database_controller.unsubscribe_senders_changed(self.reload)
 
     def filter_by_sender(self, label: str):
         """Sélectionne un envoyant dans la liste, ce qui filtre la grille."""
