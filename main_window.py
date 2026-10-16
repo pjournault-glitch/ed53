@@ -135,7 +135,7 @@ class MainWindow:
         """Construction des onglets"""
         with ui.header().classes(replace='row items-center') as header:
             ui.button(on_click=lambda: self.left_drawer.toggle(), icon='menu').props('flat color=white')
-            with ui.tabs().props('inline-label').classes('grow') as self.tabs:
+            with ui.tabs().props('inline-label mobile-arrows').classes('grow min-w-0') as self.tabs:
                 with ui.tab(name='promo', label='', icon='sym_o_school'):
                     self._promotion_label = ui.label().classes('q-tab__label')
                 with ui.tab('participants', icon='sym_o_groups') as self._tab_participants:
