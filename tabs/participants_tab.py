@@ -20,11 +20,13 @@ def _cle_tri(texte: str) -> str:
 
 class ParticipantsTab(AbstractPersonsTab):
     def __init__(self, session_state:SessionState):
+        self.session_state = session_state
         database_controller.subscribe_promotion_changed(self.reload)
         database_controller.subscribe_senders_changed(self.reload)
+        database_controller.subscribe_participants_changed(self._refresh_sender_filter_options)
         with ui.row().classes('w-full items-center justify-between no-wrap'):
             self._filter_sender = ui.select(
-                options=self._sender_choices(),
+                options=self._sender_filter_options(),
                 label='Filtrer par envoyant',
                 clearable=True,
                 on_change=self._apply_sender_filter,
@@ -98,13 +100,28 @@ class ParticipantsTab(AbstractPersonsTab):
     def _sender_choices(self) -> list[str]:
         return sorted((s.label for s in database_controller.get_senders()), key=_cle_tri)
 
+    def _sender_filter_options(self) -> dict[str, str]:
+        participants = database_controller.get_participants(self.session_state.promotion)
+        counts: dict[str, int] = {}
+        for participant in participants:
+            label = participant.sender_label or ''
+            if label:
+                counts[label] = counts.get(label, 0) + 1
+        return {
+            label: f'{label} ({counts.get(label, 0)})'
+            for label in self._sender_choices()
+        }
+
+    def _refresh_sender_filter_options(self, origin=None, op=None, payload=None) -> None:
+        self._filter_sender.set_options(self._sender_filter_options())
+
     def reload(self, origin, op, payload):
         choices = self._sender_choices()
         for col in self.grille.options['columnDefs']:
             if col.get('field') == 'sender_label':
                 col['cellEditorParams'] = {'values': choices}
                 col['cellClassRules'] = self._sender_class_rules()
-        self._filter_sender.set_options(choices)
+        self._refresh_sender_filter_options()
         if self._filter_sender.value not in choices:
             self._filter_sender.value = None
         self.grille.options['rowData'] = self._grid_lines(database_controller.get_participants(self.session_state.promotion))
@@ -114,11 +131,12 @@ class ParticipantsTab(AbstractPersonsTab):
     def unsubscribe(self) -> None:
         database_controller.unsubscribe_promotion_changed(self.reload)
         database_controller.unsubscribe_senders_changed(self.reload)
+        database_controller.unsubscribe_participants_changed(self._refresh_sender_filter_options)
 
     def filter_by_sender(self, label: str):
         """Sélectionne un envoyant dans la liste, ce qui filtre la grille."""
         choices = self._sender_choices()
-        self._filter_sender.set_options(choices)      # liste à jour avant de choisir
+        self._refresh_sender_filter_options()
         if label in choices:
             self._filter_sender.set_value(label)      # déclenche _apply_sender_filter
         else:
