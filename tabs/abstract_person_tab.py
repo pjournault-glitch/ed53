@@ -2,7 +2,9 @@ from dataclasses import asdict
 import json
 import logging
 import os
+import re
 import uuid
+import httpx
 from nicegui import ui, run
 from util.logging import log_user_action
 import io
@@ -10,8 +12,11 @@ from openpyxl import load_workbook
 from model.session_state import SessionState
 
 logger = logging.getLogger('app')
+_CITY_CACHE: dict[str, list[str]] = {} 
 
 class AbstractPersonsTab:
+    ZIP_FIELD = 'zip'
+    CITY_FIELD = 'city'
     def __init__(self, session_state:SessionState, notifier):
         self.session_state = session_state
         self._notifier = notifier
@@ -65,6 +70,38 @@ class AbstractPersonsTab:
         for b in (self._btn_add, self._btn_remove):
             b.set_visibility(self.session_state.can_edit)
         self._update_count_local()
+
+    async def _cities_for_zip(self, zip_code: str) -> list[str]:
+        if zip_code in _CITY_CACHE:
+            return _CITY_CACHE[zip_code]
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                r = await client.get('https://geo.api.gouv.fr/communes',
+                                    params={'codePostal': zip_code, 'fields': 'nom', 'format': 'json'})
+                r.raise_for_status()
+            cities = sorted({c['nom'].upper() for c in r.json()})
+        except Exception as ex:
+            logger.warning('geo.api.gouv.fr indisponible : %s', ex)
+            return []                                  # saisie libre, et pas de mise en cache de l'échec
+        _CITY_CACHE[zip_code] = cities
+        return cities
+
+    async def _resolve_city(self, line: dict, row_index) -> None:
+        zip_code = re.sub(r'\s', '', str(line.get(self.ZIP_FIELD) or ''))
+        cities = await self._cities_for_zip(zip_code) if re.fullmatch(r'\d{5}', zip_code) else []
+        line['city_options'] = cities                  # champ réservé à la grille, jamais enregistré
+
+        if len(cities) == 1:
+            line[self.CITY_FIELD] = cities[0]          # une seule commune possible : remplissage automatique
+        elif len(cities) > 1 and line.get(self.CITY_FIELD) not in cities:
+            line[self.CITY_FIELD] = ''                 # plusieurs communes : à l'utilisateur de choisir
+        self.grille.run_grid_method('applyTransaction', {'update': [line]})
+
+        if len(cities) == 1:
+            self._refresh_city_editor()
+        if len(cities) > 1 and not line[self.CITY_FIELD] and row_index is not None:
+            ui.timer(0.1, lambda: self.grille.run_grid_method(
+                'startEditingCell', {'rowIndex': row_index, 'colKey': self.CITY_FIELD}), once=True)    
     
     def _require_edit(self) -> bool:
         """Vérifier si une modification est autorisée"""
@@ -152,7 +189,31 @@ class AbstractPersonsTab:
         if not self.session_state.can_edit:
             for col in columns:
                 col['editable'] = False
+        for col in columns:
+            if col.get('field') == self.CITY_FIELD:
+                col[':cellEditorSelector'] = """params => {
+                    const options = params.data.city_options;
+                    return (options && options.length > 1)
+                        ? {component: 'agSelectCellEditor', params: {values: ['', ...options]}}
+                        : {component: 'agTextCellEditor'};
+                }"""
         return columns
+
+    def _refresh_city_editor(self) -> None:
+        """Si la cellule Ville est en cours d'édition, annule cette édition (valeur périmée)
+        et la rouvre avec la valeur à jour."""
+        ui.run_javascript(f'''
+            setTimeout(() => {{
+                const el = getElement({self.grille.id});
+                const api = el && (el.api || el.gridApi);
+                if (!api) return;
+                const cell = api.getEditingCells().find(c => c.column.getColId() === "{self.CITY_FIELD}");
+                if (cell) {{
+                    api.stopEditing(true);                       // annule sans enregistrer
+                    api.startEditingCell({{rowIndex: cell.rowIndex, colKey: "{self.CITY_FIELD}"}});
+                }}
+            }}, 50);
+        ''')    
 
     def _editable_fields(self) -> list[str]:
         return self._data_fields    
@@ -165,7 +226,7 @@ class AbstractPersonsTab:
 
     def _delete(self, ids: set[int]):
         raise NotImplementedError("La méthode _delete doit être implémentée dans la classe fille")   
-    
+
     def _get_required_fields(self) -> set[str]:
         raise NotImplementedError("La méthode _get_required_fields doit être implémentée dans la classe fille")   
     
@@ -290,9 +351,27 @@ class AbstractPersonsTab:
     async def _add_line(self):
         line = {**self._get_empty_line()}
         line['id'] = self._insert(line)               # id fourni par la base
-        log_user_action(self.session_state.name, 'création', self._get_person_name(), f'id={line["id"]}')
-        self._notifier(self.session_state, 'add', [line])
         self.grille.run_grid_method('applyTransaction', {'add': [line]})
+        self._notifier(self.session_state, 'add', [line])
+        self._focus_row(line['id'])
+
+    def _focus_row(self, row_id) -> None:
+        """Fait défiler jusqu'à la ligne et ouvre l'édition de sa première cellule modifiable."""
+        fields = self._editable_fields()
+        if not fields:
+            return
+        ui.run_javascript(f'''
+            const el = getElement({self.grille.id});
+            const api = el && (el.api || el.gridApi);
+            if (!api) return;
+            setTimeout(() => {{
+                const node = api.getRowNode("{row_id}");
+                if (!node || node.rowIndex == null) return;
+                api.ensureNodeVisible(node, "bottom");
+                api.setFocusedCell(node.rowIndex, "{fields[0]}");
+                api.startEditingCell({{rowIndex: node.rowIndex, colKey: "{fields[0]}"}});
+            }}, 50);
+        ''')
 
     @staticmethod
     def _label(row: dict) -> str:
@@ -350,7 +429,10 @@ class AbstractPersonsTab:
         if not self._require_edit():
             return
         line = e.args['data']
-        self._update(line)
+        if e.args.get('colId') == self.ZIP_FIELD:
+            await self._resolve_city(line, e.args.get('rowIndex'))
+        await run.io_bound(self._update, line)
+        self._notifier(self.session_state, 'update', [line])        
         fields = ','.join(sorted(key for key in line if key != 'id'))
         log_user_action(
             self.session_state.name,

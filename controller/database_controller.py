@@ -1,9 +1,15 @@
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING
 
 from sqlalchemy import delete, func, select
 from controller.database import SessionLocal
 from model.model import Addressee, Animator, Information, Participant, Promotion, Sender, Tag
 from model.database_model import DbInformation, DbPersonne, DbPromotion
+
+if TYPE_CHECKING:
+    from model.session_state import SessionState
 
 PERSON_FIELDS = {"sender": {"title", "firstname", "name", "street", "zip", "city", "phone", "mail", "organisation"},
                  "addressee": {"title", "firstname", "name", "street", "zip", "city", "phone", "mail"},
@@ -29,7 +35,7 @@ class DatabaseController:
         if callback in self._information_callbacks:
             self._information_callbacks.remove(callback)
 
-    def notify_information_changed(self, origin, op, payload):
+    def notify_information_changed(self, origin:SessionState, op, payload):
         for callback in list(self._information_callbacks):
             try:
                 callback(origin, op, payload)
@@ -45,7 +51,7 @@ class DatabaseController:
         self._participants_callbacks.remove(callback)
 
     """Notifie les abonnés aux changement de participants"""
-    def notify_participants_changed(self, origin: str, op: str, payload):
+    def notify_participants_changed(self, origin: SessionState, op: str, payload):
         for callback in self._participants_callbacks:
             try:
                 callback(origin, op, payload)
@@ -193,7 +199,7 @@ class DatabaseController:
         self._senders_callbacks.remove(callback)        
 
     """Notifie les abonnés aux changements d'envoyant"""
-    def notify_senders_changed(self, origin: str, op: str, payload):
+    def notify_senders_changed(self, origin: SessionState, op: str, payload):
         for callback in list(self._senders_callbacks):
             try:
                 callback(origin, op, payload)
@@ -231,7 +237,7 @@ class DatabaseController:
         self._addressees_callbacks.remove(callback)        
 
     """Notifie les abonnés aux changement de destinataires"""
-    def notify_addressees_changed(self, origin: str, op: str, payload):
+    def notify_addressees_changed(self, origin: SessionState, op: str, payload):
         for callback in list(self._addressees_callbacks):
             try:
                 callback(origin, op, payload)
@@ -269,7 +275,7 @@ class DatabaseController:
         self._animators_callbacks.remove(callback)   
 
     """Notifie les abonnés aux changement des animateurs"""
-    def notify_animators_changed(self, origin: str, op: str, payload):
+    def notify_animators_changed(self, origin: SessionState, op: str, payload):
         for callback in self._animators_callbacks:
             try:
                 callback(origin, op, payload)
