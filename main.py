@@ -28,8 +28,51 @@ assert PASSWORD_EDIT != PASSWORD_READ, 'Les deux mots de passe doivent être dif
 
 logger = logging.getLogger('app')
 
-ui.add_css('.q-tab__label { font-size: 14px; letter-spacing: .0892em; }', shared=True)
+ui.add_css('.q-tab__label { font-size: 14px; }', shared=True)
 ui.add_css('body { font-size: 12px; }', shared=True)
+ui.add_css('.nicegui-markdown :is(h1,h2,h3,h4,h5,h6) { scroll-margin-top: 70px; }', shared=True)
+ui.add_css('''
+.nicegui-markdown.aide-md {
+    font-size: 15px; line-height: 1.7; max-width: 52rem; color: #1f2328;
+}
+.nicegui-markdown.aide-md :is(h1, h2, h3, h4) {
+    font-weight: 600; line-height: 1.3; scroll-margin-top: 70px;
+}
+.nicegui-markdown.aide-md h1 {
+    font-size: 2em; margin: 0 0 .8em; padding-bottom: .3em; border-bottom: 1px solid #d1d9e0;
+}
+.nicegui-markdown.aide-md h2 {
+    font-size: 1.6em; margin: 1.8em 0 .8em; padding-bottom: .3em; border-bottom: 1px solid #d1d9e0;
+}
+.nicegui-markdown.aide-md h3 { font-size: 1.25em; margin: 1.5em 0 .6em; }
+.nicegui-markdown.aide-md h4 { font-size: 1.05em; margin: 1.2em 0 .5em; }
+
+.nicegui-markdown.aide-md p { margin: 0 0 1em; }
+.nicegui-markdown.aide-md :is(ul, ol) { margin: 0 0 1em; padding-left: 2em; }
+.nicegui-markdown.aide-md li { margin: .5em 0; }
+.nicegui-markdown.aide-md li > p { margin: .4em 0; }
+
+.nicegui-markdown.aide-md code {
+    font-size: 90%; padding: .15em .4em; border-radius: 4px; background: #eff1f3;
+}
+.nicegui-markdown.aide-md table { border-collapse: collapse; margin: 0 0 1em; }
+.nicegui-markdown.aide-md :is(th, td) { border: 1px solid #d1d9e0; padding: 6px 12px; }
+.nicegui-markdown.aide-md th { font-weight: 600; background: #f6f8fa; }
+.nicegui-markdown.aide-md blockquote {
+    margin: 0 0 1em; padding: 0 1em; color: #59636e; border-left: 4px solid #d1d9e0;
+}
+''', shared=True)
+ui.add_css('''
+.nb-chip {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 30px; height: 22px; padding: 0 10px; border-radius: 11px;
+    background: #e3f2fd; color: #1565c0; font-weight: 600; font-size: 12px;
+    cursor: pointer; transition: background .15s, color .15s;
+}
+.nb-chip:hover { background: #1976d2; color: #fff; }
+.nb-chip-zero { color: #9e9e9e; }
+.ag-center-header .ag-header-cell-label { justify-content: center; }
+''', shared=True)
 ui.add_head_html("""
                     <script>
                     window.addEventListener('error', e => emitEvent('js_error',

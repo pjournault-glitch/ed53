@@ -25,36 +25,6 @@ class InformationTab:
         self.session_state = session_state
         self._notifier = database_controller.notify_information_changed
         with ui.card().props('flat bordered').classes('w-full p-6'):
-            with ui.row().classes('w-full no-wrap gap-8'):
-                with ui.column().classes('flex-1 min-w-0'):
-                    self.name = required_label(ui.input('Nom', validation=required_rule).classes('w-full'), 'Nom')
-                    self.addressee = required_label(ui.input("À l'attention de", validation=required_rule).classes('w-full'), "À l'attention de")
-                    self.street = required_label(ui.input('Rue', validation=required_rule).classes('w-full'), 'Rue')
-                    self.bp = ui.input('Boîte postale').classes('w-full')
-                    with ui.row().classes('w-full no-wrap'):
-                        self.zip_code = required_label(ui.input('Code postal', validation=required_rule).props('mask=##### maxlength=5').classes('w-32'), 'Code postal')
-                        self.town = required_label(ui.input('Ville', validation=required_rule).classes('grow'), 'Ville')
-                with ui.column().classes('flex-1 min-w-0'):
-                    self.phone = ui.input('Téléphone').props('type=tel mask="## ## ## ## ##"').classes('w-full')
-                    self.email = ui.input(
-                        'Mail',
-                        validation={'Adresse mail invalide': lambda v: not v or ('@' in v and '.' in v.split('@')[-1])},
-                    ).props('type=email').classes('w-full')
-                    self.bic = required_label(ui.input(
-                        'BIC',
-                        validation={
-                            'Champ obligatoire': lambda v: bool(v and v.strip()),
-                            'BIC invalide': lambda v: not v or re.fullmatch(r'[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?', v) is not None,
-                        },
-                    ).props('maxlength=11 input-class=uppercase').classes('w-full'), 'BIC')
-                    self.iban = required_label(ui.input(
-                        'IBAN',
-                        validation={
-                            'Champ obligatoire': lambda v: bool(v and v.strip()),
-                            'IBAN invalide': lambda v: not v or is_valid_iban(v),
-                        },
-                    ).props('maxlength=42').classes('w-full'), 'IBAN')
-        with ui.card().props('flat bordered').classes('w-full p-6'):
             ui.label('Étiquettes de courrier').classes('text-subtitle1 text-bold')
             with ui.row().classes('w-full no-wrap gap-8'):
                 with ui.column().classes('flex-1 min-w-0'):
@@ -111,6 +81,37 @@ class InformationTab:
                     self.badge_nb_horizontal, self.badge_nb_vertical):
                     field.on_value_change(self._update_badge_label_size)
                 self._update_badge_label_size()
+        with ui.card().props('flat bordered').classes('w-full p-6'):
+            ui.label('Informations générales et informations bancaires').classes('text-subtitle1 text-bold')
+            with ui.row().classes('w-full no-wrap gap-8'):
+                with ui.column().classes('flex-1 min-w-0'):
+                    self.name = required_label(ui.input('Nom', validation=required_rule).classes('w-full'), 'Nom')
+                    self.addressee = required_label(ui.input("À l'attention de", validation=required_rule).classes('w-full'), "À l'attention de")
+                    self.street = required_label(ui.input('Rue', validation=required_rule).classes('w-full'), 'Rue')
+                    self.bp = ui.input('Boîte postale').classes('w-full')
+                    with ui.row().classes('w-full no-wrap'):
+                        self.zip_code = required_label(ui.input('Code postal', validation=required_rule).props('mask=##### maxlength=5').classes('w-32'), 'Code postal')
+                        self.town = required_label(ui.input('Ville', validation=required_rule).classes('grow'), 'Ville')
+                with ui.column().classes('flex-1 min-w-0'):
+                    self.phone = ui.input('Téléphone').props('type=tel mask="## ## ## ## ##"').classes('w-full')
+                    self.email = ui.input(
+                        'Mail',
+                        validation={'Adresse mail invalide': lambda v: not v or ('@' in v and '.' in v.split('@')[-1])},
+                    ).props('type=email').classes('w-full')
+                    self.bic = required_label(ui.input(
+                        'BIC',
+                        validation={
+                            'Champ obligatoire': lambda v: bool(v and v.strip()),
+                            'BIC invalide': lambda v: not v or re.fullmatch(r'[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?', v) is not None,
+                        },
+                    ).props('maxlength=11 input-class=uppercase').classes('w-full'), 'BIC')
+                    self.iban = required_label(ui.input(
+                        'IBAN',
+                        validation={
+                            'Champ obligatoire': lambda v: bool(v and v.strip()),
+                            'IBAN invalide': lambda v: not v or is_valid_iban(v),
+                        },
+                    ).props('maxlength=42').classes('w-full'), 'IBAN')
 
         # correspondance champ de l'interface -> attribut de Information
         self._mapping = [

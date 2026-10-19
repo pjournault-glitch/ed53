@@ -22,14 +22,14 @@ class PromotionTab:
                 ui.space()
                 ui.button('Ouvrir', icon='folder_open',
                         on_click=lambda: self._select_promotion(self.choix.value)
-                        ).props('outline no-caps').bind_enabled_from(self.choix, 'value', backward=bool)
+                        ).props('outline no-caps').bind_enabled_from(self.choix, 'value', backward=bool).tooltip("Sélection une promotion")
 
             # Nouvelle promotion
             with ui.card().classes('w-72'):
                 ui.label('Nouvelle promotion').classes('text-subtitle1 font-bold')
                 ui.label('Elle deviendra la promotion en cours.').classes('text-grey')
                 ui.space()
-                ui.button('Créer…', icon='add', on_click=self.dialogue.open).props('outline no-caps')
+                ui.button('Créer…', icon='add', on_click=self.dialogue.open).props('outline no-caps').tooltip("Créer une nouvelle promotion")
 
     def _refresh_choices(self):
         self.choix.set_options(database_controller.existing_promotions(), value=None)
@@ -47,7 +47,7 @@ class PromotionTab:
             self.year_fee = required_label(ui.number('Tarif annuel', validation=required_rule, value=current_value, min=0, step=0.50, format='%.2f', suffix='€').classes('w-full'),"Tarif annuel")
             with ui.row().classes('justify-end w-full'):
                 ui.button('Annuler', on_click=self.dialogue.close).props('flat')
-                ui.button('Créer', on_click=self._create_new_promotion)        
+                ui.button('Créer', on_click=self._create_new_promotion)    
 
     @ui.refreshable
     def _display_header(self):

@@ -64,7 +64,7 @@ class InvoiceController:
     # --- regroupement participants -> envoyant -------------------------------
 
     def _group(self) -> list[tuple]:
-        by_label = {s.label: s for s in self.senders}
+        by_label = {s.label.lower(): s for s in self.senders}
         groups: dict[str, list] = {}
         ordered = sorted(self.participants,
                          key=lambda p: ((p.name or '').casefold(), (p.firstname or '').casefold()))
@@ -75,10 +75,11 @@ class InvoiceController:
             if not label:
                 self.without_sender.append(p)
                 continue
-            if label not in by_label:
+            label_key = label.lower()
+            if label_key not in by_label:
                 self.unknown_sender.append(p)
                 continue
-            groups.setdefault(label, []).append(p)
+            groups.setdefault(label_key, []).append(p)
         return sorted(
             ((by_label[label], people) for label, people in groups.items()),
             key=lambda g: ((g[0].name or g[0].organisation or '').casefold(),

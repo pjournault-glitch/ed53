@@ -14,6 +14,10 @@ class SendersTab(AbstractPersonsTab):
         super().__init__(session_state, database_controller.notify_senders_changed)
         self.grille.on('cellClicked', self._on_cell_clicked)
 
+    async def _handle_upload(self, e):
+        await super()._handle_upload(e)
+        await self.refresh_counts()
+
     def _get_empty_line(self):
         return {
             'title': '', 'name': '', 'firstname': '', 'street': '', 'zip': '',
@@ -41,12 +45,13 @@ class SendersTab(AbstractPersonsTab):
                 {'headerName': 'Mèl', 'width': 200, 'field': 'mail', 'editable': True, 'cellClassRules': {'bg-red-200': r'x && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x)'}},
                 {'headerName': 'Organisation', 'width': 400, 'field': 'organisation', 'editable': True},
                 {'headerName': 'Participants', 'width': 130, 'field': 'nb_participants',
-                 'editable': False, 'sortable': True, 'type': 'numericColumn',
-                 ':cellRenderer': """params => {
-                     const n = Number(params.value ?? 0);
-                     if (!n) return '0';
-                     return `<a style="cursor:pointer;text-decoration:underline;color:#1976d2">${n}</a>`;
-                 }"""},
+                'editable': False, 'sortable': True,
+                'cellClass': 'text-center', 'headerClass': 'ag-center-header',
+                ':cellRenderer': """params => {
+                    const n = Number(params.value ?? 0);
+                    if (!n) return '<span class="nb-chip-zero">–</span>';
+                    return `<span class="nb-chip" title="Voir les participants">${n}</span>`;
+                }"""},
             ]
     
     def _insert(self, line: dict) -> int:
@@ -63,7 +68,7 @@ class SendersTab(AbstractPersonsTab):
         lines = self._grid_lines(senders)
         counts = self._participants_per_sender()
         for line, sender in zip(lines, senders):
-            line['nb_participants'] = counts.get(sender.label, 0)
+            line['nb_participants'] = counts.get(sender.label.lower(), 0)
         return lines
 
     def _get_required_fields(self) -> set[str]:
@@ -108,6 +113,7 @@ class SendersTab(AbstractPersonsTab):
         for p in self.session_state.promotion.participants if self.session_state.promotion else []:
             label = getattr(p, 'sender_label', '') or ''
             if label:
+                label = label.lower()
                 counts[label] = counts.get(label, 0) + 1
         return counts
 
@@ -116,12 +122,10 @@ class SendersTab(AbstractPersonsTab):
         return sender.label
 
     async def refresh_counts(self):
-        """Recalcule la colonne « Participants » sans reconstruire la grille."""
-        counts = self._participants_per_sender()
-        rows = await self.grille.get_client_data()
-        for r in rows:
-            r['nb_participants'] = counts.get(self._row_label(r), 0)
-        self.grille.run_grid_method('applyTransaction', {'update': rows})
+        """Recalcule la colonne « Participants » à partir des données enregistrées."""
+        rows = self._get_row_data()
+        self.grille.options['rowData'] = rows
+        await self.grille.run_grid_method('setGridOption', 'rowData', rows)
 
     async def _on_cell_clicked(self, e):
         if e.args.get('colId') != 'nb_participants' or not e.args.get('value'):
@@ -129,4 +133,3 @@ class SendersTab(AbstractPersonsTab):
         row = e.args.get('data') or {}
         if self._on_show_participants:
             self._on_show_participants(self._row_label(row))
-

@@ -47,13 +47,12 @@ class AbstractPersonsTab:
         with ui.row().classes('w-full items-center justify-between'):
             with ui.row().classes('items-center gap-1') as self._actions:
                 self._action_buttons = []
-                self._btn_add = ui.button('Ajouter', icon='person_add', on_click=self._add_line).props('outline no-caps')
+                self._btn_add = ui.button('Ajouter', icon='person_add', on_click=self._add_line).props('outline no-caps').tooltip("Ajouter une ligne vide à la fin du tableau")
                 self._action_buttons.append(self._btn_add)
-                if os.getenv("SHOW_IMPORT", "").lower() == "yes":
-                    self._btn_import = ui.button('Importer', icon='upload_file', on_click=lambda: self._upload.run_method('pickFiles')).props('outline no-caps')
-                    self._action_buttons.append(self._btn_import)
-                    self._btn_import.set_visibility(self.session_state.can_edit)
-                self._btn_remove = ui.button('Supprimer', icon='delete', color='negative',on_click=self._remove_selection).props('outline no-caps')
+                self._btn_import = ui.button('Importer', icon='upload_file', on_click=lambda: self._upload.run_method('pickFiles')).props('outline no-caps').tooltip("Ajouter le contenu d'un fichier excel à ce tableau")
+                self._action_buttons.append(self._btn_import)
+                self._btn_import.set_visibility(self.session_state.can_edit)
+                self._btn_remove = ui.button('Supprimer', icon='delete', color='negative',on_click=self._remove_selection).props('outline no-caps').tooltip("Supprimer les lignes sélectionnées")
                 self._action_buttons.append(self._btn_remove)                
             
             with ui.row().classes('items-center gap-1 no-wrap'):

@@ -66,7 +66,9 @@ class ParticipantsTab(AbstractPersonsTab):
                 {'headerName': 'Envoyé par', 'width': 500, 'field': 'sender_label', 'editable': True,
                  'cellEditor': 'agSelectCellEditor',
                  'cellEditorParams': {'values': self._sender_choices()},
-                 ':valueSetter': SENDER_SETTER, 'filter': 'agTextColumnFilter','cellClassRules': self._sender_class_rules()},
+                 ':valueSetter': SENDER_SETTER, 'filter': 'agTextColumnFilter',
+                 'filterParams': {'caseSensitive': False},
+                 'cellClassRules': self._sender_class_rules()},
             ]
 
 
@@ -104,11 +106,11 @@ class ParticipantsTab(AbstractPersonsTab):
         participants = database_controller.get_participants(self.session_state.promotion)
         counts: dict[str, int] = {}
         for participant in participants:
-            label = participant.sender_label or ''
+            label = participant.sender_label.lower() or ''
             if label:
                 counts[label] = counts.get(label, 0) + 1
         return {
-            label: f'{label} ({counts.get(label, 0)})'
+            label: f'{label} ({counts.get(label.lower(), 0)})'
             for label in self._sender_choices()
         }
 
@@ -143,7 +145,8 @@ class ParticipantsTab(AbstractPersonsTab):
             self._filter_sender.set_value(None)       # libellé inconnu : pas de filtre
 
     async def _apply_sender_filter(self, e):
-        model = ({'filterType': 'text', 'type': 'equals', 'filter': e.value}
+        model = ({'filterType': 'text', 'type': 'equals',
+                  'filter': e.value.lower()}
                  if e.value else None)
         await self.grille.run_grid_method('setColumnFilterModel', 'sender_label', model)
         await self.grille.run_grid_method('onFilterChanged')
@@ -151,4 +154,4 @@ class ParticipantsTab(AbstractPersonsTab):
     def _sender_class_rules(self) -> dict:
         valid = json.dumps(self._sender_choices(), ensure_ascii=False)
         # rouge si la cellule n'est pas vide et n'est pas dans la liste des libellés
-        return {'bg-red-200': f'x && !{valid}.includes(x)'}        
+        return {'bg-red-200': f'x && !{valid}.some(value => value.toLowerCase() === x.toLowerCase())'}

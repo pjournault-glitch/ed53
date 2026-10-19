@@ -1,6 +1,7 @@
 import logging
 import os
 from pathlib import Path
+from tabs.help_tab import HelpTab
 from util.util import required, to_display, valid_date
 from nicegui import app, ui
 from controller.database_controller import database_controller
@@ -62,40 +63,40 @@ class MainWindow:
         start = promotion.year + year - 1
         return f'{start}-{start + 1}'
 
-    def _add_menu_item(self, icon_name, label, fonction):
+    def _add_menu_item(self, icon_name, label, tooltip, fonction):
         """Ajoute un item de menu dans le panneau de gauche"""
         with ui.item(on_click=fonction).style('padding: 0; min-height: 0'):
             with ui.element('div').classes('w-full').style(
                 f'{ROW_STYLE} grid-template-columns: 28px minmax(0, 1fr);'
             ):
                 ui.icon(icon_name, size='sm')
-                ui.label(label).style('white-space: nowrap')
+                ui.label(label).style('white-space: nowrap').tooltip(tooltip)
 
-    def _add_year_item(self, icon_name, label, handler):
+    def _add_year_item(self, icon_name, label, tooltip, handler):
         with ui.element('div').classes('w-full').style(
-            f'{ROW_STYLE} grid-template-columns: 28px minmax(90px, 1fr) 78px 78px;'
+            f'{ROW_STYLE} grid-template-columns: 28px minmax(80px, 1fr) 75px 75px;'
         ):
             ui.icon(icon_name, size='sm')
             ui.label(label).style('white-space: nowrap')
             for year in (1, 2):
                 ui.button(self._year_label(year), on_click=partial(handler, year)) \
                     .props('flat dense no-caps size=sm color=primary') \
-                    .classes('w-full').style('white-space: nowrap')                
+                    .classes('w-full').style('white-space: nowrap').tooltip(tooltip)
     
     def _build_drawer(self) -> None:
         """Construit le volet de gauche avec les différentes impressions/extractions à générer"""
         per_year = [
-            ('sym_o_signature', "Emargement", self._generate_attendance),
-            ('sym_o_room_service', "Repas", self._generate_meal),
-            ('sym_o_receipt_long', "Factures", self._generate_invoices),
+            ('sym_o_signature', "Emargement", "Générer les feuilles d'émargement", self._generate_attendance),
+            ('sym_o_room_service', "Repas", "Générer les feuilles de règlement des repas", self._generate_meal),
+            ('sym_o_receipt_long', "Factures", "Générer les factures", self._generate_invoices),
         ]
         tags = [
-            ('sym_o_mail', 'Etiquettes courriers', self._generate_mails),
-            ('sym_o_files', 'Etiquettes dossiers', self._generate_files),
-            ('sym_o_badge', 'Badges', self._generate_badges),            
+            ('sym_o_badge', 'Badges', "Générer les badges - configuration des badges dans l'onglet 'Configuration'", self._generate_badges),            
+            ('sym_o_mail', 'Etiquettes courriers', "Générer les étiquettes de courriers - configuration des étiquettes dans l'onglet 'Configuration'", self._generate_mails),
+            ('sym_o_files', 'Etiquettes dossiers', "Générer les étiquettes de dossiers - configuration des étiquettes dans l'onglet 'Configuration'", self._generate_files),
         ]
         extractions = [
-            ('sym_o_table_view', 'Export excel', self._export_excel),
+            ('sym_o_table_view', 'Export excel', "Exporter la promotion en cours dans un fichier Excel", self._export_excel),
         ]
 
         with ui.left_drawer().props('width=320 bordered') as self.left_drawer:
@@ -103,18 +104,21 @@ class MainWindow:
                 ui.image(str(Path(__file__).resolve().parent / 'assets' / 'logo.png')).classes('w-10')
                 ui.label(database_controller.get_information().name).classes('text-subtitle1 text-bold')
             ui.separator()
-            ui.item_label('Documents par année').props('header')
+            ui.item_label('Documents par année').props('header') \
+                .style('min-height: 0; padding: 4px 16px 2px; line-height: 1rem')
             with ui.column().classes('w-full h-full no-wrap gap-0'):
-                for icon_name, label, handler in per_year:
-                    self._add_year_item(icon_name, label, handler)
-            ui.item_label('Étiquettes').props('header')
+                for icon_name, label, tooltip, handler in per_year:
+                    self._add_year_item(icon_name, label, tooltip, handler)
+            ui.item_label('Étiquettes').props('header') \
+                .style('min-height: 0; padding: 4px 16px 2px; line-height: 1rem')
             with ui.column().classes('w-full h-full no-wrap gap-0'):
-                for icon_name, label, handler in tags:
-                    self._add_menu_item(icon_name, label, handler)
-            ui.item_label('Extractions').props('header')
+                for icon_name, label, tooltip, handler in tags:
+                    self._add_menu_item(icon_name, label, tooltip, handler)
+            ui.item_label('Extractions').props('header') \
+                .style('min-height: 0; padding: 4px 16px 2px; line-height: 1rem')
             with ui.column().classes('w-full h-full no-wrap gap-0'):
-                for icon_name, label, handler in extractions:
-                    self._add_menu_item(icon_name, label, handler)
+                for icon_name, label, tooltip, handler in extractions:
+                    self._add_menu_item(icon_name, label, tooltip, handler)
             ui.space()
             ui.separator()
             with ui.row().classes('items-center justify-between w-full p-2 no-wrap'):
@@ -136,20 +140,21 @@ class MainWindow:
         with ui.header().classes(replace='row items-center') as header:
             ui.button(on_click=lambda: self.left_drawer.toggle(), icon='menu').props('flat color=white')
             with ui.tabs().props('inline-label mobile-arrows').classes('grow min-w-0') as self.tabs:
-                with ui.tab(name='promo', label='', icon='sym_o_school'):
+                with ui.tab(name='promo', label='', icon='sym_o_school').tooltip("Choix de la promotion en cours et création des promotions"):
                     self._promotion_label = ui.label().classes('q-tab__label')
-                with ui.tab('participants', icon='sym_o_groups') as self._tab_participants:
+                with ui.tab('participants', icon='sym_o_groups').tooltip("Gestion des participants de la promotion en cours") as self._tab_participants:
                     self._participants_badge = ui.badge(color='grey', text_color='white').classes('ml-2')
                 ui.separator().props('vertical').classes('mx-2 bg-white opacity-50')
-                with ui.tab('animators', label='Animateurs', icon='sym_o_diversity_3'):
+                with ui.tab('animators', label='Animateurs', icon='sym_o_diversity_3').tooltip("Gestion des animateurs de groupes de reprise"):
                     self._animators_badge = ui.badge(color='grey', text_color='white').classes('ml-2')
-                with ui.tab('addressees', label='Destinataires', icon='sym_o_contact_mail'):
+                with ui.tab('addressees', label='Destinataires', icon='sym_o_contact_mail').tooltip("Gestion des destinataires des comptes-rendus"):
                     self._addressees_badge = ui.badge(color='grey', text_color='white').classes('ml-2')
-                with ui.tab('senders', label='Envoyants', icon='sym_o_supervisor_account') as self._tab_senders:
+                with ui.tab('senders', label='Envoyants', icon='sym_o_supervisor_account').tooltip("Gestion des personnes envoyant les participants (et payant les factures)") as self._tab_senders:
                     self._senders_badge = ui.badge(color='grey', text_color='white').classes('ml-2')
                 ui.separator().props('vertical').classes('mx-2 bg-white opacity-50')
-                ui.tab('info', label='Configuration', icon='sym_o_settings')
-                ui.tab('apropos', label='A PROPOS', icon='sym_o_info').classes('ml-auto')
+                ui.tab('info', label='Configuration', icon='sym_o_settings').tooltip("Configuration des informations générales et des tailles des étiquettes et badges")
+                ui.tab('help', label='Aide', icon='sym_o_help').classes('ml-auto').tooltip('Aide')
+                ui.tab('about', label='A PROPOS', icon='sym_o_info')
             self._on_promotion_changed()
             self._on_animators_changed(self.session_state)
             self._on_senders_changed(self.session_state)
@@ -212,6 +217,9 @@ class MainWindow:
         promotion = self.session_state.promotion
         n = len(promotion.participants) if promotion else 0
         self._participants_badge.text = str(n)
+        if (promotion and origin.promotion_id == promotion.id
+                and hasattr(self, '_senders_tab')):
+            ui.timer(0, self._senders_tab.refresh_counts, once=True)
         if origin.session_id == self.session_state.session_id or origin.promotion_id != promotion.id:
             return
         self._participants_tab.apply_remote_change(op, payload)          
@@ -236,7 +244,9 @@ class MainWindow:
                 self._senders_tab = SendersTab(self.session_state, on_show_participants=self._show_participants)                
             with ui.tab_panel('info'):
                 self._information_tab = InformationTab(self.session_state)
-            with ui.tab_panel('apropos'):
+            with ui.tab_panel('help'):
+                HelpTab()
+            with ui.tab_panel('about'):
                 AboutTab()                
 
     def _generate_attendance(self, year):
