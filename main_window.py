@@ -427,9 +427,10 @@ class MainWindow:
                 ui.button('Valider', on_click=validate)
 
         result = await dialog
-        self.last_speaker = result['speaker']
-        self.last_title = result['title']
-        self.last_intervention_date = result['date']
+        if result:
+            self.last_speaker = result['speaker']
+            self.last_title = result['title']
+            self.last_intervention_date = result['date']
         dialog.delete()   # évite d'accumuler des dialogues dans la page
         return result        
 
