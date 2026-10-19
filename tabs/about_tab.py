@@ -6,7 +6,7 @@ from nicegui import ui
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 APP_NAME = os.getenv('APP_NAME', 'Ecole du diocèse')
-APP_VERSION = os.getenv('APP_VERSION', '?')
+APP_VERSION = "2.1.0"
 APP_AUTHOR = os.getenv('APP_AUTHOR', '')
 APP_EMAIL = os.getenv('APP_EMAIL', '')
 APP_YEAR = os.getenv('APP_YEAR', '')

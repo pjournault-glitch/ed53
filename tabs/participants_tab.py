@@ -36,7 +36,7 @@ class ParticipantsTab(AbstractPersonsTab):
 
     def _promotion_text(self, session_state) -> str:
         year = session_state.promotion.year if session_state.promotion else None        
-        return f'Promotion ({year}-{year + 2})' if year else ''        
+        return f'Promotion {year}-{year + 2}' if year else ''        
 
     def _get_empty_line(self):
         return {

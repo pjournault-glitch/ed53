@@ -329,17 +329,50 @@ class MainWindow:
 
         dialog.open()
         await dialog
-        dialog.delete()        
+        dialog.delete()       
+
+    async def _confirm_missing_addresses(self, persons) -> bool:
+        """Liste les personnes sans adresse et demande s'il faut poursuivre la génération"""
+        def name(p) -> str:
+            full = ' '.join(x.strip() for x in (getattr(p, 'firstname', ''), getattr(p, 'name', ''))
+                            if x and x.strip())
+            return full or (getattr(p, 'organisation', '') or '').strip() or 'Sans nom'
+
+        with ui.dialog().props('persistent') as dialog, ui.card().classes('w-[480px]'):
+            with ui.row().classes('items-center gap-2'):
+                ui.icon('warning', color='warning', size='md')
+                ui.label('Adresses manquantes').classes('text-lg font-bold')
+
+            ui.label(f"{len(persons)} personne(s) n'ont pas d'adresse - leurs étiquettes seront incomplètes :").classes('font-bold')
+            with ui.column().classes('w-full gap-0 max-h-60 overflow-auto'):
+                for p in persons:
+                    ui.label(f'• {name(p)}')
+
+            ui.label("Voulez-vous quand même générer les étiquettes ?").classes('mt-2')
+            with ui.row().classes('w-full justify-end'):
+                ui.button('Annuler', on_click=lambda: dialog.submit(False)).props('flat')
+                ui.button('Générer quand même', on_click=lambda: dialog.submit(True))
+
+        result = await dialog
+        dialog.delete()
+        return bool(result)         
         
-    def _generate_mails(self):
+    async def _generate_mails(self):
         """Génère les étiquettes de courriers"""
-        try:        
+        try:
             promotion = self.session_state.promotion
-            persons = sorted(promotion.participants + database_controller.get_addressees(), key=lambda p: p.name)
+            persons = sorted(promotion.participants + database_controller.get_addressees(),
+                            key=lambda p: p.name)
             information = database_controller.get_information()
             filename = f"courrier_{promotion.year}_{promotion.year + 2}.pdf"
+            mail_controller = MailLabelController(persons, information.mail_tag)
+
+            persons_without_address = mail_controller.get_person_without_address()
+            if persons_without_address and not await self._confirm_missing_addresses(persons_without_address):
+                return                                    # l'utilisateur annule : rien n'est généré
+
             with log_generation(self.session_state.name, 'PDF', filename):
-                pdf = MailLabelController(persons, information.mail_tag).generate()
+                pdf = mail_controller.generate()
                 ui.download(pdf, filename)
         except ValueError as e:
             ui.notify(str(e), type='warning')

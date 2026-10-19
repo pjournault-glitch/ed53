@@ -17,12 +17,12 @@ class HelpTab:
 
             # colonne de gauche : le sommaire, qui ne bouge pas quand on lit
             with ui.column().classes('gt-sm w-64 shrink-0 gap-0 overflow-y-auto pr-2'):
-                ui.label('Sommaire').classes('text-subtitle2 text-bold').style('line-height: 1.2; margin-bottom: 2px')
+                ui.label('Sommaire').classes('text-subtitle2 text-bold').style('line-height: 1.5; margin-bottom: 4px')
                 for index, (level, title) in enumerate(headings):
                     if level > 3:
                         continue
                     ui.label(title).classes('cursor-pointer text-primary') \
-                        .style(f'padding-left: {(level - 1) * 12}px; font-size: 12px; line-height: 1.15; margin: 0') \
+                        .style(f'padding-left: {(level - 1) * 12}px; font-size: 13px; line-height: 1.25; margin: 1px') \
                         .on('click', lambda _, i=index: self._scroll_to(i))
 
             # colonne de droite : le texte de l'aide, avec sa propre barre de défilement

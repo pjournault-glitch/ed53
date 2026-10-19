@@ -11,20 +11,28 @@ LINE_SPACING = 1.2
 
 class MailLabelController:
     def __init__(self, persons, tag, skip: int = 0, draw_borders: bool = False,
-                 font_name: str = 'Helvetica', font_size: float = 10):
+                 font_name: str = 'Helvetica', font_name_bold: str = 'Helvetica-Bold', font_size: float = 10):
         self.persons = persons
         self.tag = tag                  # Tag : marges en mm, nb_horizontal, nb_vertical
         self.skip = skip                # étiquettes déjà utilisées sur la 1re feuille
         self.draw_borders = draw_borders
         self.font_name = font_name
+        self.font_name_bold = font_name_bold
         self.font_size = font_size
+
+    def get_person_without_address(self):
+        invalid_persons = []
+        for person in self.persons:
+            if person.zip.strip() == '' or person.city.strip() == '': 
+                invalid_persons.append(person)
+        return invalid_persons
 
     @staticmethod
     def _lines(p) -> list[str]:
         identity = ' '.join(x for x in [p.title, p.firstname, (p.name or '').upper()] if x and x.strip())
         street = [l.strip() for l in (p.street or '').splitlines() if l.strip()]
         town = ' '.join(x for x in [p.zip, (p.city or '').upper()] if x and x.strip())
-        return [l for l in [identity, *street, town] if l]
+        return [l for l in [identity, ' ', *street, town] if l]
 
     def generate(self) -> bytes:
         if not self.persons:
@@ -64,12 +72,16 @@ class MailLabelController:
         size = self.font_size
         while size > 5 and (
             len(lines) * size * LINE_SPACING > h - 2 * PADDING
-            or max(stringWidth(l, self.font_name, size) for l in lines) > w - 2 * PADDING
+            or max(stringWidth(l, self.font_name_bold, size) for l in lines) > w - 2 * PADDING
         ):
             size -= 0.5
         block = len(lines) * size * LINE_SPACING
         y = y_top - (h - block) / 2 - size          # bloc centré verticalement
-        c.setFont(self.font_name, size)
-        for line in lines:
+
+        for i, line in enumerate(lines):
+            if i==0:
+                c.setFont(self.font_name_bold, size)
+            else:
+                c.setFont(self.font_name, size)        
             c.drawString(x + PADDING, y, line)
             y -= size * LINE_SPACING
